@@ -1,0 +1,410 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Dict, Sequence, Tuple
+
+import deepxde as dde
+import deepxde.config as ddeconfig
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+from scipy.interpolate import griddata
+from datetime import datetime
+
+from experiments.utils import *
+import pinn_pro
+
+
+BASE_DIR = Path(__file__).resolve().parent
+
+
+@dataclass
+class Poisson2dHFConfig:
+    k: int = 14 
+    # k0: int = 2
+    sigma: float = 0.1
+    centers: Tuple[Tuple[float, float], ...] = (
+        (0.30, 0.30),
+        (0.70, 0.35),
+        (0.55, 0.75),
+        (0.80, 0.80),
+    )
+    amplitudes: Tuple[float, ...] = (5, 5, 5, 5)
+    bbox: Tuple[float, float, float, float] = (0.0, 1.0, 0.0, 1.0)
+    data_file: str = ""
+    
+    num_domain: int = 10000
+    num_boundary: int = 400
+    
+    learning_rate: float = 1e-3
+    opt_decay = ['step', 1000, 0.9]
+    adam_iterations: int = 5000
+    lbfgs_iterations: int = 15000
+    net_width: int = 50
+    net_depth: int = 6
+    activation: str = "tanh"
+    initializer: str = "Glorot normal"
+    grid_resolution: int = 250
+    loss_headers = ["PDE loss", "BC loss"]
+    loss_weights: Tuple[float, float] = (1.0, 10000.0) 
+    train_distribution: str = "uniform"
+    
+    seed: int = 0
+    
+    reweight_config: dict = field(default_factory=lambda:{
+        "decay_epsi": 1.0, # 1.0
+        "num_subdomains": [5,5],
+        "reweight_every": 1000,
+        # "reweight_causal_begin": 1000,
+        # "reweight_causal_end": 9000,
+        "reweight_causal_begin": 100000,
+        "reweight_causal_end": 100000,
+        # "reweight_adaptive_begin": 10000,
+        # "reweight_adaptive_end": 15000,
+        "reweight_adaptive_begin": 100000,
+        "reweight_adaptive_end": 100000,
+        "log": True,
+        "scale": 3,
+        "grad_norms_scale": 0.5,
+        "low_fre_n": 2,
+        "low_fre_data_weight": 10.0,
+        "frame_data_weight": 0.0,
+    })
+
+
+class Poisson2dHF:
+    def __init__(self, config: Poisson2dHFConfig):
+        self.config = config
+        
+        self.pde = None
+        self.reference_fn = None
+        # self.reference = None
+        self.geom = None
+        self.data = None
+        self.net = None
+        self.model = None
+        
+    def output_dir(self) -> Path:
+        run_name = (
+            # f"width_{self.config.net_width}_depth_{self.config.net_depth}_"
+            # f"domain_{self.config.num_domain}_boundary_{self.config.num_boundary}_"
+            f"adam_{self.config.adam_iterations}_lbfgs_{self.config.lbfgs_iterations}_"
+            f"seed_{self.config.seed}_"
+            f"decay_epsi_{self.config.reweight_config['decay_epsi']}_"
+            f"data_weight_{self.config.reweight_config['low_fre_data_weight']}_"
+            f"frame_weight_{self.config.reweight_config['frame_data_weight']}_"
+            f"causal_begin_{self.config.reweight_config['reweight_causal_begin']}_"
+            f"adaptive_begin_{self.config.reweight_config['reweight_adaptive_begin']}_"
+        )
+        return run_name
+    
+    def _packet_terms(self, x: np.ndarray, y: np.ndarray):
+        centers = np.asarray(self.config.centers, dtype=ddeconfig.real(np))
+        amps = np.asarray(self.config.amplitudes, dtype=ddeconfig.real(np))
+        up = np.zeros_like(x)
+        lap_up = np.zeros_like(x)
+
+        s2 = self.config.sigma ** 2
+        invs2 = 1.0 / s2
+
+        sinx = np.sin(self.config.k * np.pi * x)
+        cosx = np.cos(self.config.k * np.pi * x)
+        siny = np.sin(self.config.k * np.pi * y)
+        cosy = np.cos(self.config.k * np.pi * y)
+
+        S = sinx * siny
+        Sx = (self.config.k * np.pi) * cosx * siny
+        Sy = (self.config.k * np.pi) * sinx * cosy
+        Sxx = -((self.config.k * np.pi) ** 2) * sinx * siny
+        Syy = -((self.config.k * np.pi) ** 2) * sinx * siny
+
+        for (cx, cy), amp in zip(centers, amps):
+            dx = x - cx
+            dy = y - cy
+            r2 = dx * dx + dy * dy
+            G = np.exp(-r2 * invs2)
+
+            Gx = G * (-2.0 * dx * invs2)
+            Gy = G * (-2.0 * dy * invs2)
+            Gxx = G * ((4.0 * dx * dx * (invs2 ** 2)) - 2.0 * invs2)
+            Gyy = G * ((4.0 * dy * dy * (invs2 ** 2)) - 2.0 * invs2)
+
+            U = amp * G * S
+            lapU = amp * (
+                Gxx * S
+                + 2.0 * Gx * Sx
+                + G * Sxx
+                + Gyy * S
+                + 2.0 * Gy * Sy
+                + G * Syy
+            )
+
+            up += U
+            lap_up += lapU
+
+        return up, lap_up
+
+    def _u0(self, x: np.ndarray, y: np.ndarray):
+        return np.sin(np.pi * x) * np.sin(np.pi * y)
+
+
+    def _lap_u0(self, x: np.ndarray, y: np.ndarray):
+        return -2.0 * (np.pi ** 2) * self._u0(x, y)
+
+    def forcing_rhs(self, points):
+        if isinstance(points, np.ndarray):
+            x = points[:, 0:1]
+            y = points[:, 1:2]
+            _, lap_up = self._packet_terms(x, y)
+            lap_u = self._lap_u0(x, y) + lap_up
+            return -lap_u
+        points_np = points.detach().cpu().numpy()
+        rhs_np = self.forcing_rhs(points_np)
+        rhs_tensor = dde.backend.as_tensor(rhs_np, dtype=getattr(points, "dtype", None))
+        point_device = getattr(points, "device", None)
+        if point_device is not None and hasattr(rhs_tensor, "to"):
+            rhs_tensor = rhs_tensor.to(point_device)
+        return rhs_tensor
+
+    def build_reference_fn(self):
+        def exact_solution(points):
+            if isinstance(points, np.ndarray):
+                x = points[:, 0:1]
+                y = points[:, 1:2]
+                up, _ = self._packet_terms(x, y)
+                return self._u0(x, y) + up
+
+            points_np = points.detach().cpu().numpy()
+            values_np = exact_solution(points_np)
+            tensor = dde.backend.as_tensor(values_np, dtype=getattr(points, "dtype", None))
+            point_device = getattr(points, "device", None)
+            if point_device is not None and hasattr(tensor, "to"):
+                tensor = tensor.to(point_device)
+            return tensor
+        return exact_solution
+
+    def build_pde(self):
+        def pde(x, u):
+            u_xx = dde.grad.hessian(u, x, i=0, j=0)
+            u_yy = dde.grad.hessian(u, x, i=1, j=1)
+            return -(u_xx + u_yy) - self.forcing_rhs(x)
+
+        return pde
+
+    def make_domain(self, config):
+        return dde.geometry.Rectangle(xmin=[0.0, 0.0], xmax=[1.0, 1.0])
+
+    def make_dataset_pinn(self, geom, reference_fn, config):
+        bc = dde.icbc.DirichletBC(
+            geom,
+            lambda pts: reference_fn(pts),
+            lambda _, on_boundary: on_boundary,
+        )
+        data = dde.data.PDE(
+            geom,
+            self.pde,
+            [bc],
+            num_domain=config.num_domain,
+            num_boundary=config.num_boundary,
+            train_distribution=config.train_distribution,
+            solution=reference_fn,
+        )
+        enforce_dataset_dtype(data, ddeconfig.real(np))
+        return data
+    
+    def make_dataset_pinn_weighted_samples(self, geom, reference_fn, config):
+        bc = dde.icbc.DirichletBC(
+            geom,
+            lambda pts: reference_fn(pts),
+            lambda _, on_boundary: on_boundary,
+        )
+        data = pinn_pro.PDEWeightedSamples(
+            geom,
+            self.pde,
+            [bc],
+            num_domain=config.num_domain,
+            num_boundary=config.num_boundary,
+            train_distribution=config.train_distribution,
+            solution=reference_fn,
+            reweight_config=config.reweight_config,
+        )
+        enforce_dataset_dtype(data, ddeconfig.real(np))
+        return data
+    
+    def make_dataset_function(self, geom, reference_fn, config):
+        num_train = config.num_domain + config.num_boundary
+        num_test = config.eval_resolution ** 2
+        data = dde.data.Function(
+            geom,
+            reference_fn,
+            num_train=num_train,
+            num_test=num_test,
+            train_distribution=config.train_distribution,
+        )
+        enforce_dataset_dtype(data, ddeconfig.real(np))
+        return data
+
+
+    def make_network(self, config):
+        layer_sizes = [2] + [config.net_width] * config.net_depth + [1]
+        return dde.nn.FNN(layer_sizes, config.activation, config.initializer)
+
+    def component_metrics(self, y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
+        metrics: Dict[str, float] = {}
+        metrics["u_mse"] = float(dde.metrics.mean_squared_error(y_true, y_pred))
+        metrics["u_l2_relative"] = float(dde.metrics.l2_relative_error(y_true, y_pred))
+        metrics["u_max_abs"] = max_absolute_error(y_true, y_pred)
+        return metrics
+
+    def make_grid(self, config):
+        xs = np.linspace(0.0, 1.0, config.grid_resolution)
+        ys = np.linspace(0.0, 1.0, config.grid_resolution)
+        grid_x, grid_y = np.meshgrid(xs, ys)
+        coords = np.column_stack((grid_x.ravel(), grid_y.ravel()))
+        return grid_x, grid_y, coords
+
+    def load_reference(self, ref_path: Path):
+        grid_x, grid_y, coords = self.make_grid(self.config)
+        reference_fn = self.build_reference_fn()
+        values_true = reference_fn(coords)
+        
+        return coords, values_true
+        
+    
+    def plot_fields(self, coords, values_true, grid_x, grid_y, grid_pred, save_path: Path, loss_record: str = ""):
+        true_grid = griddata(coords, values_true.ravel(), (grid_x, grid_y), method="cubic")
+        true_grid = np.nan_to_num(true_grid, nan=0.0)
+        true_grid = true_grid.reshape(grid_x.shape)
+        error_grid = np.abs(grid_pred - true_grid)
+        
+        fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+        extent = (self.config.bbox[0], self.config.bbox[1], self.config.bbox[2], self.config.bbox[3])
+        titles = ["Predicted", "Reference", "|delta u|"]
+        fields = [grid_pred, true_grid, error_grid]
+        for ax, title, field in zip(axes, titles, fields):
+            im = ax.imshow(field, cmap="viridis", extent=extent, origin="lower", aspect="auto")
+            ax.set_title(title)
+            ax.set_xlabel("x")
+            ax.set_ylabel("y")
+            fig.colorbar(im, ax=ax, shrink=0.8)
+            
+        fig.suptitle("Poisson2d VC" + loss_record, fontsize=10)
+        # fig.tight_layout()
+        fig.savefig(save_path)
+        print(f"Saved field plots to {save_path}")
+        plt.close(fig)
+
+    def plot_pde_loss_grad(self, loss_weight_list, loss_list, grad_list, save_path: Path):
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        n_x, n_y = self.config.reweight_config["num_subdomains"]
+        weight_arr = np.asarray(loss_weight_list, dtype=float).reshape(n_x, n_y)
+        loss_arr = np.asarray(loss_list, dtype=float).reshape(n_x, n_y)
+        grad_arr = np.asarray(grad_list, dtype=float).reshape(n_x, n_y)
+
+        fig, axes = plt.subplots(1, 3, figsize=(11, 3.5))
+
+        def plot_grid(ax, data, title, cmap, fmt=".2e"):
+            im = ax.imshow(data.T, origin="lower", cmap=cmap, aspect="equal")
+            ax.set_xticks(np.arange(n_x))
+            ax.set_yticks(np.arange(n_y))
+            ax.set_xticklabels([f"{i}" for i in range(n_x)])
+            ax.set_yticklabels([f"{j}" for j in range(n_y)])
+            ax.set_xlabel("Subdomain i")
+            ax.set_ylabel("Subdomain j")
+            ax.set_title(title)
+            for i in range(n_x):
+                for j in range(n_y):
+                    ax.text(i, j, format(data[i, j], fmt), ha="center", va="center", fontsize=6, color="k")
+            fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+        plot_grid(axes[0], weight_arr, "Loss weight per subdomain", "Greens", fmt=".2f")
+        plot_grid(axes[1], loss_arr, "PDE loss per subdomain", "Blues")
+        plot_grid(axes[2], grad_arr, "Grad norm per subdomain", "Reds")
+
+        fig.tight_layout()
+        fig.savefig(save_path)
+        plt.close(fig)
+        plt.close(fig)
+
+
+
+if __name__ == "__main__":
+    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+    torch.cuda.set_device(device)
+    
+    num_runs = 3
+    base_seed = 0
+    seeds = [base_seed + i for i in range(num_runs)]
+    
+    batch_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_root = BASE_DIR / f"multi_runs" / f"batch_{batch_tag}"
+    run_root.mkdir(parents=True, exist_ok=True)
+    
+    for run_idx, seed in enumerate(seeds):
+        if seed is None:
+            continue
+        config = Poisson2dHFConfig()
+        config.seed = int(seed)
+        poi_model = Poisson2dHF(config)
+        run_base_dir = run_root / f"run_{run_idx:02d}_seed_{config.seed}"
+        run_base_dir.mkdir(parents=True, exist_ok=True)
+
+        pinn_space_weight = pinn_pro.PINNWeightedSamples(poi_model, run_base_dir)
+        pinn_space_weight.train_and_evaluate()
+    
+    # run_root = BASE_DIR / f"multi_runs" / f"batch_20260327_180705"
+    summarize_batch(run_root)
+    
+
+    ######### 最终数据
+    # pinn batch_20260506_013744 adam_5000_lbfgs_15000_seed_*_decay_epsi_0.0_data_weight_10.0_frame_weight_0.0_causal_begin_100000_adaptive_begin_100000_
+    # pde_residual                1071.133952     0.009956979089
+    # u_l2_relative              0.7854296694    3.533727148e-07
+    # u_max_abs                   4.888713266    0.0001893371405
+    # u_mse                      0.3980201231    3.631360675e-07
+    # Raw values by run:
+    # pde_residual: [1071.139038, 1071.25354, 1071.009277]
+    # u_l2_relative: [0.7851823969, 0.7862491514, 0.7848574599]
+    # u_max_abs: [4.874474968, 4.90731975, 4.88434508]
+    # u_mse: [0.3977693217, 0.3988508805, 0.397440167]
+    
+    # pinn-c1 w/o bridge batch_20260503_042433
+    # runs_pinn_weighted_samples/adam_5000_lbfgs_15000_seed_*_decay_epsi_1.0_data_weight_0.0_frame_weight_0.0_causal_begin_1000_adaptive_begin_10000_
+    # pde_residual                9.491293589        13.32794135
+    # u_l2_relative              0.1396995641      0.03370517735
+    # u_max_abs                  0.2671308187      0.07691828351
+    # u_mse                     0.03433795238     0.002347390581
+    # Raw values by run:
+    # pde_residual: [5.295949936, 14.19496441, 8.982966423]
+    # u_l2_relative: [0.005036744824, 0.3992735545, 0.014788393]
+    # u_max_abs: [0.03395203874, 0.6568468601, 0.1105935574]
+    # u_mse: [1.636779109e-05, 0.1028563877, 0.0001411016663]
+    
+    # pinn-c1 with bridge batch_20260504_145321
+    # runs_pinn_weighted_samples/adam_5000_lbfgs_15000_seed_*_decay_epsi_1.0_data_weight_10.0_frame_weight_0.0_causal_begin_1000_adaptive_begin_10000_
+    # pde_residual                7.698276043       0.9819748245
+    # u_l2_relative             0.01780244117    7.595667433e-05
+    # u_max_abs                 0.05414991044    1.044697721e-07
+    # u_mse                    0.000253486048     5.07968197e-08
+    # Raw values by run:
+    # pde_residual: [8.49787426, 8.295193672, 6.301760197]
+    # u_l2_relative: [0.01473176398, 0.02967524646, 0.009000313061]
+    # u_max_abs: [0.05458492041, 0.05405397602, 0.05381083488]
+    # u_mse: [0.0001400230975, 0.0005681707142, 5.226433242e-05]
+
+    # pinn-c2 batch_20260505_163941
+    # pde_residual                7.409820239       0.9937918339
+    # u_l2_relative             0.01050414052    1.259495666e-05
+    # u_max_abs                 0.05164243778    7.060530958e-06
+    # u_mse                   7.931491383e-05    2.831628589e-09
+    # Raw values by run:
+    # pde_residual: [8.437282562, 7.732108593, 6.060069561]
+    # u_l2_relative: [0.00875347907, 0.00730591955, 0.01545302293]
+    # u_max_abs: [0.0541228056, 0.04795753956, 0.05284696817]
+    # u_mse: [4.943693881e-05, 3.443816059e-05, 0.0001540696421]
+
+
+
+

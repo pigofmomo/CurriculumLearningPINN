@@ -1,0 +1,153 @@
+from __future__ import annotations
+
+import argparse
+import sys
+from contextlib import contextmanager
+from datetime import datetime
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+if str(ROOT_DIR) not in sys.path:
+	sys.path.insert(0, str(ROOT_DIR))
+PINN_PRO_DIR = ROOT_DIR / "pinn_pro"
+if str(PINN_PRO_DIR) not in sys.path:
+	sys.path.insert(0, str(PINN_PRO_DIR))
+
+import torch
+
+from experiments.adr.adr import ADR, ADRConfig, BASE_DIR, summarize_batch
+import pinn_pro
+
+
+class _Tee:
+	def __init__(self, *streams):
+		self.streams = streams
+
+	def write(self, text):
+		for stream in self.streams:
+			stream.write(text)
+			stream.flush()
+
+	def flush(self):
+		for stream in self.streams:
+			stream.flush()
+
+
+@contextmanager
+def tee_output(log_path: Path):
+	log_path.parent.mkdir(parents=True, exist_ok=True)
+	with log_path.open("w", encoding="utf-8") as log_file:
+		original_stdout = sys.stdout
+		original_stderr = sys.stderr
+		sys.stdout = _Tee(original_stdout, log_file)
+		sys.stderr = _Tee(original_stderr, log_file)
+		try:
+			yield
+		finally:
+			sys.stdout = original_stdout
+			sys.stderr = original_stderr
+
+
+def build_parser() -> argparse.ArgumentParser:
+	parser = argparse.ArgumentParser(description="Run ADR with CLI-reconfigurable reweight settings.")
+	parser.add_argument("--reweight-epsi", type=float, default=0.5, dest="decay_epsi")
+	parser.add_argument("--num-subdomains", type=int, nargs=2, default=[5, 5], metavar=("NX", "NY"))
+	parser.add_argument("--reweight-every", type=int, default=500, dest="reweight_every")
+	parser.add_argument("--reweight-causal-begin", type=int, default=1000, dest="reweight_causal_begin")
+	parser.add_argument("--reweight-causal-end", type=int, default=5000, dest="reweight_causal_end")
+	parser.add_argument("--reweight-adaptive-begin", type=int, default=100000, dest="reweight_adaptive_begin")
+	parser.add_argument("--reweight-adaptive-end", type=int, default=100000, dest="reweight_adaptive_end")
+	parser.add_argument("--scale", type=float, default=5.0)
+	parser.add_argument("--grad-norms-scale", type=float, default=2.0, dest="grad_norms_scale")
+	parser.add_argument("--low-fre-n", type=int, default=2, dest="low_fre_n")
+	parser.add_argument("--low-fre-data-weight", type=float, default=1.0, dest="low_fre_data_weight")
+	parser.add_argument("--frame-data-weight", type=float, default=0.0, dest="frame_data_weight")
+	parser.add_argument("--log", dest="log", action="store_true", default=True, help="Enable logging flag in reweight_config.")
+	parser.add_argument("--no-log", dest="log", action="store_false", help="Disable logging flag in reweight_config.")
+	return parser
+
+
+def build_reweight_config(args: argparse.Namespace) -> dict:
+	return {
+		"decay_epsi": args.decay_epsi,
+		"num_subdomains": list(args.num_subdomains),
+		"reweight_every": args.reweight_every,
+		"reweight_causal_begin": args.reweight_causal_begin,
+		"reweight_causal_end": args.reweight_causal_end,
+		"reweight_adaptive_begin": args.reweight_adaptive_begin,
+		"reweight_adaptive_end": args.reweight_adaptive_end,
+		"log": args.log,
+		"scale": args.scale,
+		"grad_norms_scale": args.grad_norms_scale,
+		"low_fre_n": args.low_fre_n,
+		"low_fre_data_weight": args.low_fre_data_weight,
+		"frame_data_weight": args.frame_data_weight,
+	}
+
+
+def main() -> None:
+	parser = build_parser()
+	args = parser.parse_args()
+
+	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+	run_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
+	run_root = BASE_DIR / "multi_runs_cli" / f"batch_{run_tag}"
+	run_root.mkdir(parents=True, exist_ok=True)
+	seeds = [0, 1, 2]
+
+	for run_idx, seed in enumerate(seeds):
+		config = ADRConfig()
+		config.seed = seed
+		config.reweight_config = build_reweight_config(args)
+
+		adr_model = ADR(config)
+		run_base_dir = run_root / f"run_{run_idx:02d}_seed_{config.seed}"
+		run_base_dir.mkdir(parents=True, exist_ok=True)
+		log_path = run_base_dir / "train.log"
+
+		with tee_output(log_path):
+			print(f"Using device: {device}")
+			if device.type == "cuda":
+				torch.cuda.set_device(device)
+			print(f"Run base dir: {run_base_dir}")
+			print(f"Log path: {log_path}")
+			print(f"Seed: {seed}")
+			print(f"Reweight config: {config.reweight_config}")
+			pinn_space_weight = pinn_pro.PINNWeightedSamples(adr_model, run_base_dir)
+			pinn_space_weight.train_and_evaluate()
+
+	summarize_batch(run_root)
+
+
+if __name__ == "__main__":
+	main()
+
+####### bc weight 10000 最终数据
+# pinn
+# batch_20260510_014034 adam_5000_lbfgs_5000_seed_*_decay_epsi_0.0_data_weight_0.0_frame_weight_0.0_causal_begin_1000_adaptive_begin_100000_
+# pde_residual               0.4893984894     0.002336250642
+# u_l2_relative            0.007823882322    5.314606879e-07
+# u_max_abs                 0.02476652721    1.709921735e-05
+# u_mse                   1.525867898e-05    8.296625026e-12
+
+# pinn-c1 w/o bridge
+# batch_20260510_022505 adam_5000_lbfgs_5000_seed_*_decay_epsi_0.5_data_weight_0.0_frame_weight_0.0_causal_begin_1000_adaptive_begin_100000_
+# pde_residual               0.3480014801     0.002711520074
+# u_l2_relative            0.006696990471    2.898515761e-06
+# u_max_abs                 0.02220673659    0.0001017478216
+# u_mse                   1.179980869e-05    3.454610287e-11
+
+# pinn-c1 with bridge
+# batch_20260510_022518 adam_5000_lbfgs_5000_seed_*_decay_epsi_0.5_data_weight_10.0_frame_weight_0.0_causal_begin_1000_adaptive_begin_100000_
+# pde_residual               0.3476649324     0.006977089821
+# u_l2_relative            0.006316965406    5.504733372e-06
+# u_max_abs                 0.02579495029    0.0002152071103
+# u_mse                   1.122167981e-05    6.852693001e-11
+
+# pinn-c2
+# "grad_norms_scale": 2.0, "scale": 3.0
+# batch_20260510_053610 adam_5000_lbfgs_5000_seed_*_decay_epsi_0.5_data_weight_10.0_frame_weight_0.0_causal_begin_1000_adaptive_begin_5000_
+# pde_residual                0.349464645     0.001327310899
+# u_l2_relative             0.00571227863    7.204612767e-08
+# u_max_abs                 0.01559431038    2.891733038e-06
+# u_mse                   8.081548865e-06    5.653415105e-13
