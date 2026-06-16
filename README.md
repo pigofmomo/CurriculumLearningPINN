@@ -5,6 +5,8 @@ This repository provides the initial implementation of **Curriculum Learning of 
 Physics-Informed Neural Networks (PINNs) have shown promise for solving partial differential equations (PDEs), but their training can be unstable due to non-convex optimization landscapes, imbalanced physical constraints, and insufficient spatial information propagation. This project explores a spatially correlated curriculum learning framework for improving PINN training on boundary value problems and spatially coupled PDE systems.
 
 > **Note:** This is the first public version of the code. The repository is still under active development, and some scripts, configurations, and documentation may be updated in future versions.
+>
+> For a quick start, review the experiment scripts under `experiments/` and the reusable PINN components under `pinn_pro/`.
 
 ---
 
