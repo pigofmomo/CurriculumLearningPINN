@@ -4,12 +4,10 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from itertools import combinations
-from sklearn.cluster import KMeans
 from deepxde.geometry import Interval, Rectangle
 import deepxde as dde
 
-# 对于已经采样好的点，划分成多个子集，返回层次关系
+# Split sampled points into subdomains and keep their hierarchy. / 将已采样点划分为多个子域并记录层次关系。
 class Pointset1D:
     def __init__(self, geom, num_subdomains):
         self.geom = geom
@@ -19,7 +17,7 @@ class Pointset1D:
         self.split_points_num = [0 for _ in range(num_subdomains)]
         self.frame_points = None
         self.inside_anchors = None
-    
+
     def split(self, savepath=None, col_points=None):
         l, r = self.geom.l, self.geom.r
         edges = np.linspace(l, r, self.num_subdomains + 1)
@@ -41,14 +39,13 @@ class Pointset1D:
             ax.set_yticks([])
             ax.set_xlabel("x (subdomain splits)")
             ax.set_title("Subdomain spans (1D)")
-            # ax.legend(ncol=min(self.num_subdomains, 5), fontsize=8)
             fig.tight_layout()
             out = savepath / "subdomain_splits.png"
             fig.savefig(out)
             print(f"Saved subdomain splits plot to {out}\n")
             plt.close(fig)
 
-            # 颜色填充不同边界距离的区间
+            # Color intervals by distance to the outer boundary. / 按到外边界的距离给区间着色。
             fig_fill, ax_fill = plt.subplots(figsize=(8, 1.2))
             unique_dist = sorted(set(self.distance_to_boundary))
             cmap = plt.cm.get_cmap("tab10", len(unique_dist))
@@ -68,7 +65,7 @@ class Pointset1D:
             print(f"Saved distance-colored spans to {out_fill}")
             plt.close(fig_fill)
 
-            
+
     def filter_points(self, points):
         grouped_points = [None] * len(self.intervals)
         self.split_points_num = [0 for _ in range(self.num_subdomains)]
@@ -77,9 +74,9 @@ class Pointset1D:
             inside_idx = interval.inside(points)
             grouped_points[i] = points[inside_idx]
             self.split_points_num[i] = grouped_points[i].shape[0]
-        
+
         return grouped_points
-    
+
     def gen_frame_points(self, num_each_part=2, savepath=None):
         boundary_groups = []
         for interval in self.intervals:
@@ -93,24 +90,23 @@ class Pointset1D:
             ax.set_yticks([])
             ax.set_xlabel("x (boundary points)")
             ax.set_title("Subdomain boundary points (1D)")
-            # fig.tight_layout()
             out = savepath / "subdomain_boundary_points.png"
             fig.savefig(out)
             print(f"Saved subdomain boundary points plot to {out}\n")
             plt.close(fig)
-        
+
         self.frame_points = merged
-        
+
     def gen_inside_anchors(self, num_each_part=10, savepath=None):
         anchor_groups = []
         for interval in self.intervals:
             anchor_pts = interval.uniform_points(num_each_part, boundary=False)
             anchor_groups.append(anchor_pts)
-        
-        self.inside_anchors = anchor_groups
-    
 
-class Pointset2D:   
+        self.inside_anchors = anchor_groups
+
+
+class Pointset2D:
     def __init__(self, geom, num_subdomains: list[int,int]):
         self.geom = geom
         self.num_subdomains = num_subdomains
@@ -119,7 +115,7 @@ class Pointset2D:
         self.split_points_num = [0 for _ in range(num_subdomains[0] * num_subdomains[1])]
         self.frame_points = None
         self.inside_anchors = None
-        
+
     def split(self, savepath=None, col_points=None):
         x_min, x_max = self.geom.xmin[0], self.geom.xmax[0]
         y_min, y_max = self.geom.xmin[1], self.geom.xmax[1]
@@ -138,7 +134,7 @@ class Pointset2D:
             for j in range(n_y):
                 dist = min(i, n_x - 1 - i, j, n_y - 1 - j)
                 self.distance_to_boundary.append(dist)
-        
+
         if savepath is not None:
             savepath.parent.mkdir(parents=True, exist_ok=True)
             fig, ax = plt.subplots(figsize=(5, 5))
@@ -155,14 +151,12 @@ class Pointset2D:
             ax.set_xlabel("x")
             ax.set_ylabel("y")
             ax.set_title("Subdomain spans (2D)")
-            # ax.legend(ncol=min(self.num_subdomains[0]*self.num_subdomains[1], 5), fontsize=6)
-            # fig.tight_layout()
             out = savepath / "subdomain_splits.png"
             fig.savefig(out)
             print(f"Saved subdomain splits plot to {out}\n")
             plt.close(fig)
 
-            # 颜色填充不同边界距离的子域
+            # Color rectangles by distance to the outer boundary. / 按到外边界的距离给矩形子域着色。
             fig_fill, ax_fill = plt.subplots(figsize=(5, 5))
             unique_dist = sorted(set(self.distance_to_boundary))
             cmap = plt.cm.get_cmap("tab20", len(unique_dist))
@@ -182,13 +176,12 @@ class Pointset2D:
             ax_fill.set_xlabel("x")
             ax_fill.set_ylabel("y")
             ax_fill.set_title("Subdomain distance-to-boundary coloring (2D)")
-            # fig_fill.tight_layout()
             out_fill = savepath / "subdomain_distance_fill.png"
             fig_fill.savefig(out_fill)
             print(f"Saved distance-colored spans to {out_fill}\n")
             plt.close(fig_fill)
-            
-            
+
+
     def filter_points(self, points):
         grouped_points = [None] * len(self.rectangles)
         self.split_points_num = [0 for _ in range(len(self.rectangles))]
@@ -198,7 +191,7 @@ class Pointset2D:
             grouped_points[i] = points[inside_idx]
             self.split_points_num[i] = grouped_points[i].shape[0]
         return grouped_points
-    
+
     def gen_frame_points(self, num_each_part=20, savepath=None):
         boundary_groups = []
         for rect in self.rectangles:
@@ -212,18 +205,17 @@ class Pointset2D:
             ax.set_xlabel("x")
             ax.set_ylabel("y")
             ax.set_title("Subdomain boundary points")
-            # fig.tight_layout()
             out = savepath / "subdomain_boundary_points.png"
             fig.savefig(out)
             print(f"Saved subdomain boundary points plot to {out}\n")
             plt.close(fig)
-        
+
         self.frame_points = merged
-    
+
     def gen_inside_anchors(self, num_each_part=10, savepath=None):
         anchor_groups = []
         for rec in self.rectangles:
             anchor_pts = rec.uniform_points(num_each_part, boundary=False)
             anchor_groups.append(anchor_pts)
-        
+
         self.inside_anchors = anchor_groups

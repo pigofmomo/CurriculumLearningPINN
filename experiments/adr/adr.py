@@ -23,7 +23,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 @dataclass
 class ADRConfig:
-    
+
     nu: float = 1e-4
     beta: float = 100.0
     cmin: float = 1.0
@@ -38,11 +38,11 @@ class ADRConfig:
     k: int = 8
     data_file: str = ""
     bbox: Tuple[float, float, float, float] = (0.0, 1.0, 0.0, 1.0)
-    
+
     num_domain: int = 10000
     num_boundary: int = 400
     num_test: int = 10000
-    
+
     learning_rate: float = 5e-4
     opt_decay = ['step', 1000, 0.9]
     adam_iterations: int = 5000
@@ -53,24 +53,19 @@ class ADRConfig:
     initializer: str = "Glorot normal"
     grid_resolution: int = 250
     loss_headers = ["PDE loss", "BC loss"]
-    # loss_weights: Tuple[float, float] = (1.0, 100000.0)
     loss_weights: Tuple[float, float] = (1.0, 10000.0)
     train_distribution: str = "uniform"
-    
+
     seed: int = 0
-    
+
     reweight_config: dict = field(default_factory=lambda:{
         "decay_epsi": 0.5, # 0.5
         "num_subdomains": [5,5],
         "reweight_every": 500,
-        # "reweight_causal_begin": 100000,
-        # "reweight_causal_end": 100000,
         "reweight_adaptive_begin": 100000,
         "reweight_adaptive_end": 100000,
         "reweight_causal_begin": 1000,
         "reweight_causal_end": 5000,
-        # "reweight_adaptive_begin": 5000,
-        # "reweight_adaptive_end": 8000,
         "log": True,
         "scale": 5,
         "grad_norms_scale": 2,
@@ -78,24 +73,21 @@ class ADRConfig:
         "low_fre_data_weight": 1.0,
         "frame_data_weight": 0.0,
     })
-    
+
 
 class ADR:
     def __init__(self, config):
         self.config = config
-        
+
         self.pde = None
         self.reference_fn = None
-        # self.reference = None
         self.geom = None
         self.data = None
         self.net = None
         self.model = None
-        
+
     def output_dir(self) -> Path:
         run_name = (
-            # f"width_{self.config.net_width}_depth_{self.config.net_depth}_"
-            # f"domain_{self.config.num_domain}_boundary_{self.config.num_boundary}_"
             f"adam_{self.config.adam_iterations}_lbfgs_{self.config.lbfgs_iterations}_"
             f"seed_{self.config.seed}_"
             f"decay_epsi_{self.config.reweight_config['decay_epsi']}_"
@@ -105,7 +97,7 @@ class ADR:
             f"adaptive_begin_{self.config.reweight_config['reweight_adaptive_begin']}_"
         )
         return run_name
-    
+
     def advection_field_np(self, points: np.ndarray):
         x = points[:, 0:1]
         y = points[:, 1:2]
@@ -133,7 +125,7 @@ class ADR:
         yb = points[:, 1:2]
         r2 = (xb - self.config.xc) ** 2 + (yb - self.config.yc) ** 2
         return self.config.cmin + self.config.cmax * dde.backend.exp(-r2 / (self.config.sig_c ** 2))
-    
+
     def solution_components(self, points: np.ndarray):
         x = points[:, 0:1]
         y = points[:, 1:2]
@@ -178,7 +170,7 @@ class ADR:
         u_y = u_low_y + self.config.delta * u_packet_y
         lap_u = (u_low_xx + u_low_yy) + self.config.delta * (u_packet_xx + u_packet_yy)
         return u, u_x, u_y, lap_u
-    
+
 
     def forcing_rhs(self, points):
         if isinstance(points, np.ndarray):
@@ -242,7 +234,7 @@ class ADR:
         )
         enforce_dataset_dtype(data, ddeconfig.real(np))
         return data
-    
+
     def make_dataset_pinn_weighted_samples(self, geom, reference_fn, config):
         bc = dde.icbc.DirichletBC(
             geom,
@@ -261,7 +253,7 @@ class ADR:
         )
         enforce_dataset_dtype(data, ddeconfig.real(np))
         return data
-    
+
     def make_dataset_function(self, geom, reference_fn, config):
         num_train = config.num_domain + config.num_boundary
         num_test = config.eval_resolution ** 2
@@ -298,16 +290,16 @@ class ADR:
         grid_x, grid_y, coords = self.make_grid(self.config)
         reference_fn = self.build_reference_fn()
         values_true = reference_fn(coords)
-        
+
         return coords, values_true
-        
-    
+
+
     def plot_fields(self, coords, values_true, grid_x, grid_y, grid_pred, save_path: Path, loss_record: str = ""):
         true_grid = griddata(coords, values_true.ravel(), (grid_x, grid_y), method="cubic")
         true_grid = np.nan_to_num(true_grid, nan=0.0)
         true_grid = true_grid.reshape(grid_x.shape)
         error_grid = np.abs(grid_pred - true_grid)
-        
+
         fig, axes = plt.subplots(1, 3, figsize=(18, 5))
         extent = (self.config.bbox[0], self.config.bbox[1], self.config.bbox[2], self.config.bbox[3])
         titles = ["Predicted", "Reference", "|delta u|"]
@@ -318,9 +310,8 @@ class ADR:
             ax.set_xlabel("x")
             ax.set_ylabel("y")
             fig.colorbar(im, ax=ax, shrink=0.8)
-            
+
         fig.suptitle("Poisson2d VC" + loss_record, fontsize=10)
-        # fig.tight_layout()
         fig.savefig(save_path)
         print(f"Saved field plots to {save_path}")
         plt.close(fig)
@@ -356,20 +347,20 @@ class ADR:
         fig.savefig(save_path)
         plt.close(fig)
         plt.close(fig)
-        
+
 if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     torch.cuda.set_device(device)
-    
+
     num_runs = 3
     base_seed = 0
     seeds = [base_seed + i for i in range(num_runs)]
-    
+
     batch_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_root = BASE_DIR / f"multi_runs" / f"batch_{batch_tag}"
     run_root.mkdir(parents=True, exist_ok=True)
-    
+
     for run_idx, seed in enumerate(seeds):
         if seed is None:
             continue
@@ -381,6 +372,5 @@ if __name__ == "__main__":
 
         pinn_space_weight = pinn_pro.PINNWeightedSamples(adr_model, run_base_dir)
         pinn_space_weight.train_and_evaluate()
-    
-    # run_root = BASE_DIR / f"multi_runs" / f"batch_20260329_015121"
+
     summarize_batch(run_root)

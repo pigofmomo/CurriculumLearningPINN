@@ -19,19 +19,19 @@ BASE_DIR = Path(__file__).resolve().parent
 
 @dataclass
 class NS2DConfig:
-    # pde parameters
+    # PDE parameters. / PDE参数。
     reynolds: float = 100.0
     lid_coefficient: float = 8
     data_file: str = BASE_DIR / f"data/lid_driven_a{int(lid_coefficient)}.dat"
-    
-    # geometry
+
+    # Geometry settings. / 几何区域设置。
     spatial_domain = ([0.0, 0.0], [1.0, 1.0])
-    
-    # sampling points num 
+
+    # Sampling point counts. / 采样点数量。
     num_domain: int = 2500
     num_boundary: int = 400
-    
-    # training configuration
+
+    # Training configuration. / 训练配置。
     learning_rate: float = 1e-3
     adam_iterations: int = 5000
     lbfgs_iterations: int = 3000
@@ -39,17 +39,16 @@ class NS2DConfig:
     net_width: int = 60
     net_depth: int = 6
     grid_resolution: int = 120
-    # loss_weights: Tuple[float, float, float, float, float, float, float, float] = (1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0)
     loss_weights: Tuple[float, float, float, float, float, float, float, float] = (1.0, 1.0, 1.0, 100.0, 100.0, 100.0, 100.0, 100.0)
     loss_headers = ["loss momentum x", "loss momentum y", "loss continuity",
                     "loss BC u top", "loss BC v top",
                     "loss BC u other", "loss BC v other",
                     "loss BC p fix"]
     train_distribution: str = "uniform"
-    
-    # random seed
+
+    # Random seed. / 随机种子。
     seed: int = 0
-    
+
     reweight_config: dict = field(default_factory=lambda: {
         "decay_epsi": 1.0, # 0.5
         "num_subdomains": [5,5],
@@ -58,8 +57,6 @@ class NS2DConfig:
         "reweight_causal_end": 5000,
         "reweight_adaptive_begin": 100000,
         "reweight_adaptive_end": 100000,
-        # "reweight_adaptive_begin": 6000,
-        # "reweight_adaptive_end": 8000,
         "log": True,
         "scale": 2,
         "grad_norms_scale": 1,
@@ -68,22 +65,20 @@ class NS2DConfig:
         "frame_data_weight": 0.0,
     })
 
-  
+
 class NS2D:
     def __init__(self, config: NS2DConfig):
         self.config = config
-        
+
         self.pde = None
         self.reference_fn = None
         self.geom = None
         self.data = None
         self.net = None
         self.model = None
-    
+
     def output_dir(self) -> Path:
         run_name = (
-            # f"Re_{self.config.reynolds:.0f}_a_{self.config.lid_coefficient:.0f}_"
-            # f"width_{self.config.net_width}_depth_{self.config.net_depth}_"
             f"adam_{self.config.adam_iterations}_lbfgs_{self.config.lbfgs_iterations}_"
             f"random_seed_{self.config.seed}_"
             f"decay_epsi_{self.config.reweight_config['decay_epsi']}_"
@@ -93,7 +88,7 @@ class NS2D:
             f"reweight_adaptive_{self.config.reweight_config['reweight_adaptive_begin']}_{self.config.reweight_config['reweight_adaptive_end']}"
         )
         return run_name
-    
+
     def build_pde(self):
         reynolds = self.config.reynolds
         inv_re = 1.0 / reynolds
@@ -137,7 +132,7 @@ class NS2D:
     def make_domain(self, config):
         geom = dde.geometry.Rectangle(config.spatial_domain[0], config.spatial_domain[1])
         return geom
-    
+
     def make_dataset_pinn(self, geom, reference_fn, config: NS2DConfig):
         bc_u_top = dde.DirichletBC(geom, self.lid_velocity(config.lid_coefficient), self.boundary_top, component=0)
         bc_v_top = dde.DirichletBC(geom, lambda _: 0.0, self.boundary_top, component=1)
@@ -155,7 +150,7 @@ class NS2D:
         )
         enforce_dataset_dtype(data, ddeconfig.real(np))
         return data
-    
+
     def make_dataset_pinn_weighted_samples(self, geom, reference_fn, config: NS2DConfig):
         bc_u_top = dde.DirichletBC(geom, self.lid_velocity(config.lid_coefficient), self.boundary_top, component=0)
         bc_v_top = dde.DirichletBC(geom, lambda _: 0.0, self.boundary_top, component=1)
@@ -174,7 +169,7 @@ class NS2D:
         )
         enforce_dataset_dtype(data, ddeconfig.real(np))
         return data
-    
+
     def make_dataset_function(self, geom, reference_fn, config: NS2DConfig):
         num_train = config.num_domain + config.num_boundary
         num_test = config.grid_resolution ** 2
@@ -187,7 +182,7 @@ class NS2D:
         )
         enforce_dataset_dtype(data, ddeconfig.real(np))
         return data
-    
+
     def make_network(self, config: NS2DConfig):
         layer_sizes = [2] + [config.net_width] * config.net_depth + [3]
         return dde.nn.FNN(layer_sizes, "sin", "Glorot normal")
@@ -230,7 +225,7 @@ class NS2D:
         fig, axes = plt.subplots(4, 3, figsize=(18, 16))
         ref_fields = []
         pred_fields = []
-        
+
         def plot_heatmap(ax, grid_x, grid_y, values, title: str):
             im = ax.pcolormesh(grid_x, grid_y, values, shading="auto", cmap="RdBu_r")
             ax.set_xlabel(r"$x$")
@@ -238,7 +233,7 @@ class NS2D:
             ax.set_title(title)
             fig = ax.get_figure()
             fig.colorbar(im, ax=ax, shrink=0.8)
-        
+
         def plot_streamlines(ax, grid_x, grid_y, u_field, v_field, title: str):
             u_clean = np.nan_to_num(u_field)
             v_clean = np.nan_to_num(v_field)
@@ -248,13 +243,13 @@ class NS2D:
             ax.set_xlabel(r"$x$")
             ax.set_ylabel(r"$y$")
             ax.set_title(title, fontsize=10)
-            # add a thin, empty colorbar to match heatmap widths
+            # Add a thin empty colorbar so line plots match heatmap widths. / 添加细空色条，使折线图宽度与热图一致。
             sm = plt.cm.ScalarMappable(cmap="Greys")
             sm.set_array([])
             cbar = ax.get_figure().colorbar(sm, ax=ax, fraction=0.046, pad=0.04)
             cbar.set_ticks([])
             cbar.outline.set_visible(False)
-            
+
         for idx, label in enumerate(labels):
             ref_grid = np.nan_to_num(griddata(coords, values_true[:, idx], (grid_x, grid_y), method="cubic"))
             pred_grid = grid_pred[:, :, idx]
@@ -307,21 +302,21 @@ class NS2D:
         fig.tight_layout()
         fig.savefig(save_path)
         plt.close(fig)
-    
+
 if __name__ == "__main__":
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     torch.cuda.set_device(device)
-    
-    
+
+
     num_runs = 3
     base_seed = 0
     seeds = [base_seed + i for i in range(num_runs)]
-    
+
     batch_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_root = BASE_DIR / f"multi_runs" / f"batch_{batch_tag}"
     run_root.mkdir(parents=True, exist_ok=True)
-    
+
     for run_idx, seed in enumerate(seeds):
         if seed is None:
             continue
@@ -333,6 +328,3 @@ if __name__ == "__main__":
 
         pinn_space_weight = pinn_pro.PINNWeightedSamples(ns2d_model, run_base_dir)
         pinn_space_weight.train_and_evaluate()
-    
-    # run_root = BASE_DIR / f"multi_runs_cli" / f"batch_20260509_020219"
-    # summarize_batch(run_root)
