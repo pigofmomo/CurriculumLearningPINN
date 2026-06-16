@@ -27,6 +27,8 @@ The code studies curriculum strategies for Physics-Informed Neural Networks (PIN
 │   ├── poisson_high_fre/        # High-frequency 2D Poisson benchmark
 │   ├── adr/                     # 2D advection-diffusion-reaction benchmark
 │   └── ns2d/                    # 2D lid-driven Navier-Stokes benchmark and reference data
+├── paper_artifacts/            # Paper-facing result notes copied out of source comments
+├── LICENSE
 └── README.md
 ```
 
@@ -37,6 +39,7 @@ Key modules:
 - `pinn_pro/data.py`: data containers and loss construction for grouped residual, boundary, and supervised terms.
 - `pinn_pro/domain_decomp.py`: spatial partitioning helpers used by curriculum weighting.
 - `experiments/utils.py`: shared utilities for references, metrics, logging, plotting, and artifact saving.
+- `paper_artifacts/experiment_results.md`: compact paper-result notes that should not live inside executable scripts.
 
 ---
 
@@ -85,7 +88,7 @@ python experiments/adr/adr_cli.py --cuda-device 0
 python experiments/ns2d/ns2d_cli.py --cuda-device 0
 ```
 
-The CLI scripts expose curriculum hyperparameters such as the number of subdomains, reweighting interval, low-frequency bridge order, and data weights. Use `--help` to inspect available options:
+The CLI scripts expose curriculum hyperparameters such as the number of subdomains, reweighting interval, low-frequency bridge order, and data weights. They are designed for command-line batch runs and execute multiple seeds in one invocation, so the ADR and NS2D CLI commands can be launched in separate terminals or jobs when compute resources are available. Use `--help` to inspect available options:
 
 ```bash
 python experiments/adr/adr_cli.py --help
@@ -134,7 +137,7 @@ The current defaults are intended to document the main experimental setup used d
 3. Run the desired benchmark entry point from the repository root.
 4. Archive the generated `config.json`, `metrics.json`, `loss.dat`, and result figures for each run.
 
-Additional plotting scripts and exact paper command presets may be added as the paper release is finalized.
+Additional plotting scripts and exact paper command presets may be added as the paper release is finalized. Compact result notes that were previously kept in source-code comments are now collected under `paper_artifacts/`.
 
 ---
 
@@ -158,4 +161,4 @@ If this repository is useful for your research, please cite the accompanying pap
 
 ## License
 
-A license file has not yet been added. Please contact the authors before redistributing or using this code in downstream projects.
+This project is released under the MIT License. See [LICENSE](LICENSE) for details.

@@ -21,6 +21,7 @@ import pinn_pro
 
 
 class _Tee:
+	"""Mirror console output to a log file. / 将终端输出同步写入日志文件。"""
 	def __init__(self, *streams):
 		self.streams = streams
 
@@ -70,6 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def build_reweight_config(args: argparse.Namespace) -> dict:
+	"""Collect CLI options into the reweight config. / 将命令行参数整理为重加权配置。"""
 	return {
 		"decay_epsi": args.decay_epsi,
 		"num_subdomains": list(args.num_subdomains),
@@ -95,6 +97,7 @@ def main() -> None:
 	run_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
 	run_base_dir = BASE_DIR / "multi_runs_cli" / f"batch_{run_tag}"
 	run_base_dir.mkdir(parents=True, exist_ok=True)
+	# Run multiple independent seeds in one CLI invocation. / 一次命令行调用运行多个独立随机种子。
 	seeds = [0, 1, 2]
 
 	for run_idx, seed in enumerate(seeds):
@@ -107,6 +110,7 @@ def main() -> None:
 		run_dir.mkdir(parents=True, exist_ok=True)
 		log_path = run_dir / "train.log"
 
+		# Keep each seed in an isolated run directory and log. / 每个随机种子使用独立目录和日志。
 		with tee_output(log_path):
 			print(f"Using device: {device}")
 			if device.type == "cuda":
