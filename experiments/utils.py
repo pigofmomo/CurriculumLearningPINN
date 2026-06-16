@@ -51,7 +51,7 @@ def save_config(path: Path, config_dict: Dict[str, Any]) -> None:
 
 
 def save_metrics(path: Path, metrics: Dict[str, float], step=None) -> None:
-	# 若提供 step 且文件已存在，则追加 {step: metrics}；否则直接写入 metrics。
+	# Append {step: metrics} when step is provided; otherwise write metrics directly. / 若提供step则追加{step: metrics}，否则直接写入metrics。
 	if step is None:
 		with path.open("w", encoding="utf-8") as fh:
 			json.dump(metrics, fh, indent=2, sort_keys=True)
@@ -65,7 +65,7 @@ def save_metrics(path: Path, metrics: Dict[str, float], step=None) -> None:
 			if isinstance(loaded, dict):
 				data.update(loaded)
 		except Exception:
-			# 若旧文件损坏或格式不符，直接覆盖
+			# Overwrite invalid or corrupted metric files. / 旧指标文件损坏或格式不符时直接覆盖。
 			data = {}
 
 	data[str(step)] = metrics
@@ -92,8 +92,8 @@ def ensure_run_root(RUN_ROOT: Path) -> None:
 	if RUN_ROOT.exists():
 		shutil.rmtree(RUN_ROOT)
 	RUN_ROOT.mkdir(parents=True, exist_ok=True)
-    
-    
+
+
 def enforce_dataset_dtype(data, dtype):
     def convert(value):
         if isinstance(value, np.ndarray):
@@ -179,7 +179,7 @@ def weighted_polyfit_nd(X: np.ndarray, y: np.ndarray, deg: int, w: np.ndarray | 
     elif y.ndim == 2:
         if y.shape[0] != N:
             raise ValueError(f"y first dim must match N={N}, got {y.shape[0]}")
-        # keep as (N,C)
+        # Keep target values as (N, C). / 保持目标值形状为(N, C)。
     else:
         raise ValueError(f"y must be 1D or 2D, got shape {y.shape}")
 
@@ -195,7 +195,7 @@ def weighted_polyfit_nd(X: np.ndarray, y: np.ndarray, deg: int, w: np.ndarray | 
     if deg < 0:
         raise ValueError("deg must be >= 0")
 
-    # Build monomial exponent list for total degree <= deg
+    # Build monomial exponents with total degree <= deg. / 构造总次数不超过deg的单项式指数。
     if d == 1:
         powers = np.arange(deg + 1).reshape(-1, 1)
     elif d == 2:
@@ -205,7 +205,7 @@ def weighted_polyfit_nd(X: np.ndarray, y: np.ndarray, deg: int, w: np.ndarray | 
                 pows.append((i, j))
         powers = np.array(pows, dtype=int)
     else:
-        # Generic recursion for d>2 (term count grows quickly)
+        # Generic recursion for d > 2; term count grows quickly. / d>2时使用通用递归，项数会快速增长。
         def gen_powers(total_deg, dim):
             if dim == 1:
                 return [(total_deg,)]
@@ -220,13 +220,13 @@ def weighted_polyfit_nd(X: np.ndarray, y: np.ndarray, deg: int, w: np.ndarray | 
             pows.extend(gen_powers(tdeg, d))
         powers = np.array(pows, dtype=int)
 
-    # Design matrix A: A[i, j] = prod_k X[i,k]**powers[j,k]
+    # Build design matrix A from monomial powers. / 根据单项式指数构建设计矩阵A。
     M = powers.shape[0]
     A = np.ones((N, M), dtype=float)
     for k in range(d):
         A *= X[:, [k]] ** powers[:, k]
 
-    # Weighted least squares: min ||sqrt(W)(A C - Y)||_F
+    # Solve weighted least squares min ||sqrt(W)(A C - Y)||_F. / 求解加权最小二乘。
     Wsqrt = np.sqrt(w)                      # (N,)
     Aw = A * Wsqrt[:, None]                 # (N,M)
     Yw = y * Wsqrt[:, None]                 # (N,C)
@@ -266,11 +266,11 @@ def polyval_nd(X: np.ndarray, coef: np.ndarray, powers: np.ndarray):
 
     coef = np.asarray(coef, dtype=float)
     if coef.ndim == 1:
-        # (M,)
+        # Single-output polynomial values. / 单输出多项式值。
         coef2 = coef.reshape(-1, 1)   # (M,1)
         squeeze_1d = True
     elif coef.ndim == 2:
-        # (M,C)
+        # Multi-output polynomial values. / 多输出多项式值。
         coef2 = coef
         squeeze_1d = False
     else:
@@ -280,7 +280,7 @@ def polyval_nd(X: np.ndarray, coef: np.ndarray, powers: np.ndarray):
     if coef2.shape[0] != M:
         raise ValueError(f"coef first dim must match M={M}, got {coef2.shape[0]}")
 
-    # Design matrix A: (N,M)
+    # Design matrix shape is (N, M). / 设计矩阵形状为(N, M)。
     A = np.ones((N, M), dtype=float)
     for k in range(d):
         A *= X[:, [k]] ** powers[:, k]
@@ -294,7 +294,7 @@ def polyval_nd(X: np.ndarray, coef: np.ndarray, powers: np.ndarray):
 def visualize_polyfit_nd(
     X,              # (N, d)
     y,              # (N,) or (N,1) or (N,C)
-    coef,           # (M,) or (M,1) or (M,C)
+    coef,           # Single-output polynomial values. / 单输出多项式值。 or (M,1) or (M,C)
     powers,         # (M, d)
     out_path,       # Path or str
     title="Low-frequency fit on anchors",
@@ -331,7 +331,7 @@ def visualize_polyfit_nd(
     else:
         raise ValueError(f"y must be 1D or 2D, got {y.shape}")
 
-    # Evaluate polyfit on anchors (same X)
+    # Evaluate polynomial fit on the anchor points. / 在锚点上评估多项式拟合。
     Ylow = polyval_nd(X, coef, powers)
     if np.ndim(Ylow) == 1:
         Ylow = Ylow.reshape(N, 1)
@@ -348,11 +348,11 @@ def visualize_polyfit_nd(
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Layout: one row if few channels, otherwise grid
+    # Use one row for few channels, otherwise a grid layout. / 通道较少时单行展示，否则使用网格布局。
     ncols = min(3, C)
     nrows = int(np.ceil(C / ncols))
 
-    # ---------- 1D ----------
+    # 1D visualization branch. / 一维可视化分支。
     if d == 1:
         x = X[:, 0]
         order = np.argsort(x)
@@ -367,20 +367,19 @@ def visualize_polyfit_nd(
             ax.set_title(f"{title} (ch={c})")
             ax.legend()
 
-        # hide unused subplots
+        # Hide unused subplot axes. / 隐藏未使用的子图坐标轴。
         for k in range(C, nrows*ncols):
             axes[k // ncols][k % ncols].axis("off")
 
-        # plt.tight_layout()
         plt.savefig(out_path)
         plt.close(fig)
 
-    # ---------- 2D ----------
+    # 2D visualization branch. / 二维可视化分支。
     elif d == 2:
         x = X[:, 0]
         y_coord = X[:, 1]
 
-        # grid for contour
+        # Build an interpolation grid for contour plots. / 为等值图构建插值网格。
         xg = np.linspace(x.min(), x.max(), grid_res)
         yg = np.linspace(y_coord.min(), y_coord.max(), grid_res)
         Xg, Yg = np.meshgrid(xg, yg)
@@ -415,18 +414,17 @@ def visualize_polyfit_nd(
             ax.set_title(f"{title} (ch={c})")
             ax.legend(loc="upper right")
 
-        # hide unused subplots
+        # Hide unused subplot axes. / 隐藏未使用的子图坐标轴。
         for k in range(C, nrows*ncols):
             axes[k // ncols][k % ncols].axis("off")
 
-        # plt.tight_layout()
         plt.savefig(out_path)
         plt.close(fig)
 
     else:
         raise ValueError(f"Visualization only supports d=1 or d=2, got d={d}")
-    
-# Summarize final metrics by experiment group. The table reports mean and variance.
+
+# Summarize final metrics by experiment group; report mean and variance. / 按实验组汇总最终指标，并报告均值和方差。
 def summarize_batch(dir: Union[str, Path], output_filename: str = "final_metrics_summary.txt") -> Path:
     batch_dir = Path(dir)
     if not batch_dir.exists() or not batch_dir.is_dir():
@@ -437,10 +435,10 @@ def summarize_batch(dir: Union[str, Path], output_filename: str = "final_metrics
         raise ValueError(f"No metrics.json found under: {batch_dir}")
 
     def canonical_group_key(path: Path) -> str:
-        # Group only by experiment path pattern, independent of each run's max_step.
+        # Group by experiment path pattern, independent of each run's max_step. / 按实验路径模式分组，不受各run的max_step影响。
         rel = path.relative_to(batch_dir).as_posix()
         rel = re.sub(r"^run_\d+_seed_\d+/", "", rel)
-        # Normalize both naming styles: `random_seed_x` and `seed_x`.
+        # Normalize both seed naming styles: `random_seed_x` and `seed_x`. / 统一random_seed_x和seed_x两种命名。
         rel = re.sub(r"random_seed_\d+|seed_\d+", "seed_*", rel)
         return rel
 

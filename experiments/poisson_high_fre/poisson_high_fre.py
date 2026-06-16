@@ -23,8 +23,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 @dataclass
 class Poisson2dHFConfig:
-    k: int = 14 
-    # k0: int = 2
+    k: int = 14
     sigma: float = 0.1
     centers: Tuple[Tuple[float, float], ...] = (
         (0.30, 0.30),
@@ -35,10 +34,10 @@ class Poisson2dHFConfig:
     amplitudes: Tuple[float, ...] = (5, 5, 5, 5)
     bbox: Tuple[float, float, float, float] = (0.0, 1.0, 0.0, 1.0)
     data_file: str = ""
-    
+
     num_domain: int = 10000
     num_boundary: int = 400
-    
+
     learning_rate: float = 1e-3
     opt_decay = ['step', 1000, 0.9]
     adam_iterations: int = 5000
@@ -49,21 +48,17 @@ class Poisson2dHFConfig:
     initializer: str = "Glorot normal"
     grid_resolution: int = 250
     loss_headers = ["PDE loss", "BC loss"]
-    loss_weights: Tuple[float, float] = (1.0, 10000.0) 
+    loss_weights: Tuple[float, float] = (1.0, 10000.0)
     train_distribution: str = "uniform"
-    
+
     seed: int = 0
-    
+
     reweight_config: dict = field(default_factory=lambda:{
         "decay_epsi": 1.0, # 1.0
         "num_subdomains": [5,5],
         "reweight_every": 1000,
-        # "reweight_causal_begin": 1000,
-        # "reweight_causal_end": 9000,
         "reweight_causal_begin": 100000,
         "reweight_causal_end": 100000,
-        # "reweight_adaptive_begin": 10000,
-        # "reweight_adaptive_end": 15000,
         "reweight_adaptive_begin": 100000,
         "reweight_adaptive_end": 100000,
         "log": True,
@@ -78,19 +73,16 @@ class Poisson2dHFConfig:
 class Poisson2dHF:
     def __init__(self, config: Poisson2dHFConfig):
         self.config = config
-        
+
         self.pde = None
         self.reference_fn = None
-        # self.reference = None
         self.geom = None
         self.data = None
         self.net = None
         self.model = None
-        
+
     def output_dir(self) -> Path:
         run_name = (
-            # f"width_{self.config.net_width}_depth_{self.config.net_depth}_"
-            # f"domain_{self.config.num_domain}_boundary_{self.config.num_boundary}_"
             f"adam_{self.config.adam_iterations}_lbfgs_{self.config.lbfgs_iterations}_"
             f"seed_{self.config.seed}_"
             f"decay_epsi_{self.config.reweight_config['decay_epsi']}_"
@@ -100,7 +92,7 @@ class Poisson2dHF:
             f"adaptive_begin_{self.config.reweight_config['reweight_adaptive_begin']}_"
         )
         return run_name
-    
+
     def _packet_terms(self, x: np.ndarray, y: np.ndarray):
         centers = np.asarray(self.config.centers, dtype=ddeconfig.real(np))
         amps = np.asarray(self.config.amplitudes, dtype=ddeconfig.real(np))
@@ -214,7 +206,7 @@ class Poisson2dHF:
         )
         enforce_dataset_dtype(data, ddeconfig.real(np))
         return data
-    
+
     def make_dataset_pinn_weighted_samples(self, geom, reference_fn, config):
         bc = dde.icbc.DirichletBC(
             geom,
@@ -233,7 +225,7 @@ class Poisson2dHF:
         )
         enforce_dataset_dtype(data, ddeconfig.real(np))
         return data
-    
+
     def make_dataset_function(self, geom, reference_fn, config):
         num_train = config.num_domain + config.num_boundary
         num_test = config.eval_resolution ** 2
@@ -270,16 +262,16 @@ class Poisson2dHF:
         grid_x, grid_y, coords = self.make_grid(self.config)
         reference_fn = self.build_reference_fn()
         values_true = reference_fn(coords)
-        
+
         return coords, values_true
-        
-    
+
+
     def plot_fields(self, coords, values_true, grid_x, grid_y, grid_pred, save_path: Path, loss_record: str = ""):
         true_grid = griddata(coords, values_true.ravel(), (grid_x, grid_y), method="cubic")
         true_grid = np.nan_to_num(true_grid, nan=0.0)
         true_grid = true_grid.reshape(grid_x.shape)
         error_grid = np.abs(grid_pred - true_grid)
-        
+
         fig, axes = plt.subplots(1, 3, figsize=(18, 5))
         extent = (self.config.bbox[0], self.config.bbox[1], self.config.bbox[2], self.config.bbox[3])
         titles = ["Predicted", "Reference", "|delta u|"]
@@ -290,9 +282,8 @@ class Poisson2dHF:
             ax.set_xlabel("x")
             ax.set_ylabel("y")
             fig.colorbar(im, ax=ax, shrink=0.8)
-            
+
         fig.suptitle("Poisson2d VC" + loss_record, fontsize=10)
-        # fig.tight_layout()
         fig.savefig(save_path)
         print(f"Saved field plots to {save_path}")
         plt.close(fig)
@@ -335,15 +326,15 @@ if __name__ == "__main__":
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     torch.cuda.set_device(device)
-    
+
     num_runs = 3
     base_seed = 0
     seeds = [base_seed + i for i in range(num_runs)]
-    
+
     batch_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_root = BASE_DIR / f"multi_runs" / f"batch_{batch_tag}"
     run_root.mkdir(parents=True, exist_ok=True)
-    
+
     for run_idx, seed in enumerate(seeds):
         if seed is None:
             continue
@@ -355,6 +346,5 @@ if __name__ == "__main__":
 
         pinn_space_weight = pinn_pro.PINNWeightedSamples(poi_model, run_base_dir)
         pinn_space_weight.train_and_evaluate()
-    
-    # run_root = BASE_DIR / f"multi_runs" / f"batch_20260327_180705"
+
     summarize_batch(run_root)

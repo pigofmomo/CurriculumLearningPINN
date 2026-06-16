@@ -123,7 +123,7 @@ def main() -> None:
 			print(f"Reweight config: {config.reweight_config}")
 			pinn_runner = pinn_pro.PINNWeightedSamples(model, run_dir)
 			pinn_runner.train_and_evaluate()
-   
+
 	summarize_batch(run_base_dir)
 
 if __name__ == "__main__":
