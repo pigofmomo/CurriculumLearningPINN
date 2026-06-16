@@ -1,3 +1,5 @@
+"""Shared experiment utilities for metrics, references, plots, and summaries. / 实验指标、参考解、绘图与汇总工具。"""
+
 from __future__ import annotations
 
 import json

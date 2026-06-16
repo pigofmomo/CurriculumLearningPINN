@@ -1,3 +1,5 @@
+"""Command-line multi-seed runner for the ADR benchmark. / ADR基准的命令行多随机种子运行器。"""
+
 from __future__ import annotations
 
 import argparse

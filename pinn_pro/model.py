@@ -1,3 +1,5 @@
+"""Weighted-sample DeepXDE/PyTorch model implementation. / 基于加权采样的DeepXDE/PyTorch模型实现。"""
+
 import deepxde as dde
 import torch
 from collections import OrderedDict

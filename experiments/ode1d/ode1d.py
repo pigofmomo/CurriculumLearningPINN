@@ -1,3 +1,5 @@
+"""One-dimensional ODE benchmark for curriculum PINN experiments. / 一维ODE课程学习PINN基准实验。"""
+
 from dataclasses import dataclass, field
 from datetime import datetime
 import json

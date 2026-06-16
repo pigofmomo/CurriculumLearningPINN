@@ -27,7 +27,7 @@ The code studies curriculum strategies for Physics-Informed Neural Networks (PIN
 │   ├── poisson_high_fre/        # High-frequency 2D Poisson benchmark
 │   ├── adr/                     # 2D advection-diffusion-reaction benchmark
 │   └── ns2d/                    # 2D lid-driven Navier-Stokes benchmark and reference data
-├── paper_artifacts/            # Paper-facing result notes copied out of source comments
+├── experiments/experiment_results.md # Paper-facing result notes copied out of source comments
 ├── LICENSE
 └── README.md
 ```
@@ -39,7 +39,7 @@ Key modules:
 - `pinn_pro/data.py`: data containers and loss construction for grouped residual, boundary, and supervised terms.
 - `pinn_pro/domain_decomp.py`: spatial partitioning helpers used by curriculum weighting.
 - `experiments/utils.py`: shared utilities for references, metrics, logging, plotting, and artifact saving.
-- `paper_artifacts/experiment_results.md`: compact paper-result notes that should not live inside executable scripts.
+- `experiments/experiment_results.md`: compact paper-result notes that should not live inside executable scripts.
 
 ---
 
@@ -137,7 +137,7 @@ The current defaults are intended to document the main experimental setup used d
 3. Run the desired benchmark entry point from the repository root.
 4. Archive the generated `config.json`, `metrics.json`, `loss.dat`, and result figures for each run.
 
-Additional plotting scripts and exact paper command presets may be added as the paper release is finalized. Compact result notes that were previously kept in source-code comments are now collected under `paper_artifacts/`.
+Additional plotting scripts and exact paper command presets may be added as the paper release is finalized. Compact result notes that were previously kept in source-code comments are now collected in `experiments/experiment_results.md`.
 
 ---
 

@@ -1,3 +1,5 @@
+"""Data containers and residual weighting for grouped PDE samples. / 分组PDE采样的数据容器与残差加权。"""
+
 import numpy as np
 import deepxde as dde
 from deepxde import backend as bkd

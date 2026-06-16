@@ -1,3 +1,5 @@
+"""Training wrappers for baseline and curriculum PINN variants. / 基线与课程学习PINN的训练封装。"""
+
 import deepxde as dde
 import deepxde.config as ddeconfig
 from experiments.utils import *

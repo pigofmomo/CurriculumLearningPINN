@@ -1,3 +1,5 @@
+"""Two-dimensional lid-driven Navier-Stokes benchmark definition. / 二维顶盖驱动Navier-Stokes基准定义。"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

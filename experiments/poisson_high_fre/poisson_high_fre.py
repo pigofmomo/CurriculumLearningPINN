@@ -1,3 +1,5 @@
+"""High-frequency Poisson benchmark experiment. / 高频Poisson方程基准实验。"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

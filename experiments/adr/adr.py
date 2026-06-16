@@ -1,3 +1,5 @@
+"""Advection-diffusion-reaction benchmark definition. / 对流-扩散-反应方程基准定义。"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
