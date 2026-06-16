@@ -1,35 +1,150 @@
 # Curriculum Learning PINN
 
-This repository provides the initial implementation of **Curriculum Learning of Physics-Informed Neural Networks Based on Spatial Correlation**.
+This repository contains the public research implementation for **Curriculum Learning of Physics-Informed Neural Networks Based on Spatial Correlation**.
 
-Physics-Informed Neural Networks (PINNs) have shown promise for solving partial differential equations (PDEs), but their training can be unstable due to non-convex optimization landscapes, imbalanced physical constraints, and insufficient spatial information propagation. This project explores a spatially correlated curriculum learning framework for improving PINN training on boundary value problems and spatially coupled PDE systems.
+The code studies curriculum strategies for Physics-Informed Neural Networks (PINNs). It is organized around spatially structured training, low-frequency bridge constraints, and region-adaptive reweighting for boundary value problems and spatially coupled PDE systems.
 
-> **Note:** This is the first public version of the code. The repository is still under active development, and some scripts, configurations, and documentation may be updated in future versions.
->
-> For a quick start, review the experiment scripts under `experiments/` and the reusable PINN components under `pinn_pro/`.
+> **Repository status:** this is a research code release. The core experiment runners and reusable PINN components are included; APIs may still change while the paper artifacts are finalized.
 
 ---
 
-## Overview
+## Highlights
 
-The proposed framework is designed to improve PINN training by introducing spatially structured learning strategies. The current implementation includes the following main components:
-
-1. **Spatial Curriculum Learning**
-
-   The computational domain is divided into multiple subregions. Training weights are assigned according to spatial relationships, so that near-boundary regions are emphasized first and information is gradually guided toward the interior of the domain.
-
-2. **Low-Frequency Information Bridge**
-
-   Sparse anchor points are used to construct a low-frequency approximation of the solution, which provides additional consistency constraints across spatially separated regions and helps suppress global low-frequency drift.
-
-3. **Region-Adaptive Reweighting**
-
-   Subregion-wise PDE losses are dynamically adjusted according to the local optimization status, allowing the model to focus more on difficult regions with large residuals or insufficient gradient contribution.
+- **Spatial curriculum learning**: partitions the computational domain into subregions and adjusts training emphasis according to spatial relationships.
+- **Low-frequency information bridge**: uses sparse anchor information to stabilize global low-frequency behavior across separated regions.
+- **Region-adaptive reweighting**: updates subregion-wise PDE losses based on local residual and optimization status.
+- **Reproducible artifacts**: experiment runners save configurations, losses, metrics, checkpoints, logs, and result figures under per-experiment run directories.
 
 ---
 
-## Notes
+## Repository layout
 
-- The code is provided mainly for reference and research communication.
-- Some experimental scripts or configuration files may be incomplete in the current version.
-- Users interested in the implementation details may inspect and adapt the source code at their own discretion.
+```text
+.
+├── pinn_pro/                    # Reusable PINN runners, weighted-sample model, data utilities, domain decomposition
+├── experiments/
+│   ├── ode1d/                   # One-dimensional ODE benchmark
+│   ├── poisson_high_fre/        # High-frequency 2D Poisson benchmark
+│   ├── adr/                     # 2D advection-diffusion-reaction benchmark
+│   └── ns2d/                    # 2D lid-driven Navier-Stokes benchmark and reference data
+└── README.md
+```
+
+Key modules:
+
+- `pinn_pro/pinn.py`: training/evaluation wrappers for baseline PINN and weighted-sample curriculum PINN runs.
+- `pinn_pro/model.py`: DeepXDE/PyTorch-compatible model implementation for weighted collocation groups.
+- `pinn_pro/data.py`: data containers and loss construction for grouped residual, boundary, and supervised terms.
+- `pinn_pro/domain_decomp.py`: spatial partitioning helpers used by curriculum weighting.
+- `experiments/utils.py`: shared utilities for references, metrics, logging, plotting, and artifact saving.
+
+---
+
+## Installation
+
+The implementation uses Python with DeepXDE and the PyTorch backend.
+
+```bash
+# 1. Create and activate an environment, for example:
+conda create -n clpinn python=3.10 -y
+conda activate clpinn
+
+# 2. Install the main dependencies.
+pip install deepxde torch numpy scipy matplotlib
+
+# 3. Select the PyTorch backend for DeepXDE.
+export DDE_BACKEND=pytorch
+```
+
+If you use CUDA, install the PyTorch build that matches your driver and CUDA toolkit from the official PyTorch instructions before running the experiments.
+
+---
+
+## Quick start
+
+Run commands from the repository root.
+
+```bash
+export DDE_BACKEND=pytorch
+python experiments/ode1d/ode1d.py
+```
+
+The ODE example is the smallest benchmark and is useful for checking that the environment works. Larger 2D experiments can be launched with:
+
+```bash
+python experiments/poisson_high_fre/poisson_high_fre.py
+python experiments/adr/adr_cli.py --cuda-device 0
+python experiments/ns2d/ns2d_cli.py --cuda-device 0
+```
+
+The CLI scripts expose curriculum hyperparameters such as the number of subdomains, reweighting interval, low-frequency bridge order, and data weights. Use `--help` to inspect available options:
+
+```bash
+python experiments/adr/adr_cli.py --help
+python experiments/ns2d/ns2d_cli.py --help
+```
+
+---
+
+## Outputs
+
+Experiment outputs are written inside each experiment directory, for example:
+
+- `runs_pinn/`: baseline PINN runs.
+- `runs_pinn_weighted_samples/`: curriculum weighted-sample runs.
+- `logs/`: timestamped CLI logs for experiments that use CLI runners.
+
+A typical run directory contains:
+
+- `config.json`: experiment configuration and device summary.
+- `loss.dat`: training loss history.
+- `metrics.json`: evaluation metrics and PDE residual summaries.
+- `results.png`: visualization of prediction/reference fields where available.
+- DeepXDE model checkpoint files.
+
+Generated run artifacts are intentionally ignored by Git so that the repository remains lightweight.
+
+---
+
+## Benchmarks included
+
+| Benchmark | Entry point | Notes |
+| --- | --- | --- |
+| 1D ODE | `python experiments/ode1d/ode1d.py` | Lightweight sanity-check case. |
+| High-frequency Poisson | `python experiments/poisson_high_fre/poisson_high_fre.py` | 2D benchmark with localized high-frequency structure. |
+| ADR | `python experiments/adr/adr_cli.py` | 2D advection-diffusion-reaction case with CLI hyperparameters. |
+| Lid-driven NS2D | `python experiments/ns2d/ns2d_cli.py` | 2D Navier-Stokes case with included reference data. |
+
+---
+
+## Reproducing paper experiments
+
+The current defaults are intended to document the main experimental setup used during development. For final paper reproduction:
+
+1. Set `DDE_BACKEND=pytorch`.
+2. Fix random seeds through the experiment configuration.
+3. Run the desired benchmark entry point from the repository root.
+4. Archive the generated `config.json`, `metrics.json`, `loss.dat`, and result figures for each run.
+
+Additional plotting scripts and exact paper command presets may be added as the paper release is finalized.
+
+---
+
+## Citation
+
+If this repository is useful for your research, please cite the accompanying paper once it is available.
+
+```bibtex
+@misc{curriculum_learning_pinn_spatial_correlation,
+  title  = {Curriculum Learning of Physics-Informed Neural Networks Based on Spatial Correlation},
+  author = {To be updated},
+  year   = {2026},
+  note   = {Public research code release}
+}
+```
+
+---
+
+## License
+
+A license file has not yet been added. Please contact the authors before redistributing or using this code in downstream projects.

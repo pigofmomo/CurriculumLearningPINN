@@ -1,0 +1,32 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build and packaging artifacts
+build/
+dist/
+*.egg-info/
+
+# Experiment outputs
+experiments/**/runs*/
+experiments/**/logs/
+experiments/**/*.ckpt
+experiments/**/*.pt
+experiments/**/*.pth
+experiments/**/loss.dat
+experiments/**/metrics.json
+experiments/**/results*.png
+
+# Local editor and OS files
+.DS_Store
+.vscode/
+.idea/
