@@ -1,3 +1,5 @@
+"""Weighted-sample DeepXDE/PyTorch model implementation. / 基于加权采样的DeepXDE/PyTorch模型实现。"""
+
 import deepxde as dde
 import torch
 from collections import OrderedDict
@@ -34,15 +36,11 @@ class ModelWeightedSamples:
         self.outputs_losses_train = None
         self.outputs_losses_test = None
         
-        # self.update_pde_weights = 100
-        # self.pde_loss_distribution = None
-        # self.pde_loss_weights = None
         self.f_partition = None
         self.loss_fn = None
-        # self.record_every = self.data.reweight_config.get("record_every", 2000)
         self.pinn_pro = pinn_pro
         
-        # 低通桥阶次
+        # Low-frequency bridge order. / 低频桥接项的阶数。
         self.low_fre_n = self.data.reweight_config.get("low_fre_n", 2)
         
         self.data_loss_weight = None
@@ -66,7 +64,7 @@ class ModelWeightedSamples:
         self.metrics = [metrics_module.get(m) for m in metrics]
         
     def _compile_pytorch(self, lr, loss_fn, decay):
-        # 用于预测的，不计算Loss, 输入是tensor
+        # Prediction path without loss computation. / 预测路径，不计算损失。
         def outputs(training, inputs):
             self.net.train(mode=training)
             with torch.no_grad():
@@ -81,11 +79,11 @@ class ModelWeightedSamples:
             grad.clear()
             return self.net(inputs)
 
-        # 预测并计算loss
+        # Forward pass and loss computation. / 前向传播并计算损失。
         def outputs_losses(training, x_col_group, x_bc, x_data, y_data, losses_fn):
             self.net.train(mode=training)
             
-            # 先转成tensor
+            # Convert sampled arrays to tensors. / 将采样点转为张量。
             inputs_col_group = tuple(
                 torch.as_tensor(x).requires_grad_() for x in x_col_group
             )
@@ -110,7 +108,7 @@ class ModelWeightedSamples:
             else:
                 loss_data = torch.tensor([0.0])
             
-            # 这里是调用PDE data类的loss计算
+            # Delegate PDE residual losses to the data object. / PDE残差损失由data对象计算。
             losses, f_partition = losses_fn(inputs_col_group, outputs_col_group, 
                                             inputs_bcs, outputs_bcs, loss_fn, mul_pde_weights=training)
             self.f_partition = f_partition
@@ -162,7 +160,7 @@ class ModelWeightedSamples:
         self.outputs_losses_test = outputs_losses_test
         self.train_step = train_step
     
-    # 这些是转成numpy的接口
+    # NumPy-facing helper interfaces. / 面向NumPy的辅助接口。
     def _outputs(self, training, inputs):
         outs = self.outputs(training, inputs)
         return utils.to_numpy(outs)
@@ -199,7 +197,7 @@ class ModelWeightedSamples:
         if self.train_state.step == 0:
             self.data.init_data(savepath=self.pinn_pro.run_dir)
         
-        # 7 组采样点
+        # Training batch groups: collocation, boundary, and optional data anchors. / 训练批次包含配点、边界点和可选数据锚点。
         self.train_state.x_train_col = self.data.train_x_col
         self.train_state.x_train_group = self.data.train_x_group
         self.train_state.x_train_bc = self.data.train_x_bc
@@ -215,13 +213,10 @@ class ModelWeightedSamples:
         else:
             self._train_sgd(iterations, display_every)
 
-        # print("")
-        # if model_save_path is not None:
-        #     self.save(model_save_path, verbose=1)
         return self.losshistory, self.train_state
 
     def get_low_fre_anchor_values(self):
-        # inside_anchors是一个list
+        # Interior anchors are stored as a list by subdomain. / 内部锚点按子域存为列表。
         x_anchors_np = self.data.geometry_partitions.inside_anchors
         y_anchors = [None for _ in range(len(x_anchors_np))]
         weights = [None for _ in range(len(x_anchors_np))]
@@ -248,7 +243,7 @@ class ModelWeightedSamples:
         pass
         
     def get_frame_anchor_values(self):
-        # frame points 是一个np数组
+        # Frame points are stored as one NumPy array. / 框架点存为一个NumPy数组。
         x_anchors_np = self.data.geometry_partitions.frame_points
         x_anchors_tenser = torch.as_tensor(x_anchors_np)
         y_anchors = self.net(x_anchors_tenser).detach().cpu().numpy()
@@ -319,8 +314,6 @@ class ModelWeightedSamples:
         reweight_adaptive_end = self.data.reweight_config.get("reweight_adaptive_end", 100000)
         
         prev_n_iter = 0
-        # dde.optimizers.set_LBFGS_options(maxiter=reweight_every)
-        # dde.optimizers.LBFGS_options["iter_per_step"] = reweight_every
         
         while prev_n_iter < iterations:
             self._train_step(
@@ -447,7 +440,7 @@ class ModelWeightedSamples:
         self.net.load_state_dict(checkpoint["model_state_dict"])
         self.opt.load_state_dict(checkpoint["optimizer_state_dict"])
     
-    # 把f_partition处理成每个子域的PDE loss
+    # Reduce partitioned residuals to one PDE loss per subdomain. / 将分区残差汇总为每个子域的PDE损失。
     def pde_loss_for_each_part(self):
         f_partition_mse = [[self.loss_fn(bkd.zeros_like(error), error) for error in parts] for parts in self.f_partition]
         pde_loss_list = [sum(part) for part in f_partition_mse]
@@ -496,8 +489,6 @@ class TrainState:
         self.x_test = None
         self.y_test = None
 
-        # self.x_low = None
-        # self.y_low = None
         self.weights_train_data = None
         
         self.loss_train = []

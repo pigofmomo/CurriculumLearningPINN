@@ -1,3 +1,5 @@
+"""Advection-diffusion-reaction benchmark definition. / 对流-扩散-反应方程基准定义。"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -382,5 +384,3 @@ if __name__ == "__main__":
     
     # run_root = BASE_DIR / f"multi_runs" / f"batch_20260329_015121"
     summarize_batch(run_root)
-    # 每次耗时1200+1100=2300s，3次大概2小时
-    

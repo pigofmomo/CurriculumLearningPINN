@@ -1,3 +1,5 @@
+"""Domain decomposition helpers for spatial curriculum weights. / 空间课程权重使用的区域划分工具。"""
+
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")

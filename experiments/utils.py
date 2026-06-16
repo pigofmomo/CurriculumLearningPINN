@@ -1,3 +1,5 @@
+"""Shared experiment utilities for metrics, references, plots, and summaries. / 实验指标、参考解、绘图与汇总工具。"""
+
 from __future__ import annotations
 
 import json
@@ -424,7 +426,7 @@ def visualize_polyfit_nd(
     else:
         raise ValueError(f"Visualization only supports d=1 or d=2, got d={d}")
     
-# 这里面要改成std！
+# Summarize final metrics by experiment group. The table reports mean and variance.
 def summarize_batch(dir: Union[str, Path], output_filename: str = "final_metrics_summary.txt") -> Path:
     batch_dir = Path(dir)
     if not batch_dir.exists() or not batch_dir.is_dir():

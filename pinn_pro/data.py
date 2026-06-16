@@ -1,3 +1,5 @@
+"""Data containers and residual weighting for grouped PDE samples. / 分组PDE采样的数据容器与残差加权。"""
+
 import numpy as np
 import deepxde as dde
 from deepxde import backend as bkd
@@ -39,7 +41,7 @@ class PDEWeightedSamples:
         self.soln = solution
         self.num_test = num_test
 
-        # 3类采样点
+        # Three sample groups: collocation, boundary, and optional supervised anchors. / 三类采样点：配点、边界点和可选监督锚点。
         self.num_bcs = None
         self.train_x_group = None
         self.train_x_col = None
@@ -80,7 +82,7 @@ class PDEWeightedSamples:
         distance_to_boundary = np.asarray(self.geometry_partitions.distance_to_boundary)
         pde_loss_arr = np.asarray(pde_loss_list)
 
-        # 归一化 loss，避免尺度过大/过小影响权重
+        # Normalize losses before causal weighting. / 因果加权前归一化损失，避免尺度影响权重。
         sum_loss = np.sum(pde_loss_arr)
         if sum_loss > 0:
             pde_loss_arr = pde_loss_arr / sum_loss
@@ -110,10 +112,7 @@ class PDEWeightedSamples:
         else:
             grad_norms_arr = np.zeros_like(pde_loss_list, dtype=float)
         
-        # 按区域 loss 大小分配权重；
-        # 若 log=True，则取log
-        # 归一到1~scale的绝对值之间
-        # 如果scale<0，则反转权重，loss大的权重小，loss小的权重大
+        # Map regional losses to [1, |scale|]; negative scale reverses the order. / 将区域损失映射到[1, |scale|]，scale为负时反向加权。
         scale_abs = abs(scale)
         if scale < 0:
             reverse = True
@@ -147,13 +146,12 @@ class PDEWeightedSamples:
                 pde_loss_bc = [pde_loss_bc]
             f_bc.append(pde_loss_bc)
         f_bc_stack = [torch.vstack([f_bc[i][j] for i in range(len(f_bc))]) for j in range(len(f_bc[0]))]
-        # 是一个tensor，补充到每一个pde term的前面就行
+        # Boundary loss is prepended to each PDE term group. / 边界损失会拼到每组PDE损失前。
         
-        # print(f_bc_stack)
         num_partitions = len(inputs_col_group)
         f_partition = [None for i in range(num_partitions)]
         for i in range(num_partitions):
-            f_i = self.pde(inputs_col_group[i], outputs_col_group[i]) # 是长度等于点数的tensor
+            f_i = self.pde(inputs_col_group[i], outputs_col_group[i])  # residual tensor per collocation point / 每个配点的残差张量
             if not isinstance(f_i, (list, tuple)):
                 f_i = [f_i]
             if mul_pde_weights:
@@ -166,19 +164,15 @@ class PDEWeightedSamples:
             torch.vstack([f_partition[i][j] for i in range(num_partitions)])
             for j in range(num_pde_terms)
         ]
-        # print(f[0][0:5,:])
         f = [torch.vstack((f_bc_stack[j], f[j])) for j in range(num_pde_terms)]
-        # print(f[0][0:5,:])
         losses = [
             loss_fn(bkd.zeros_like(error), error) for error in f
         ]
-        # print(losses)
         for i, bc in enumerate(self.bcs):
             beg, end = 0, self.num_bcs[i]
             error = bc.error(self.train_x_bc[i], inputs_bcs[i], outputs_bcs[i], beg, end)
             losses.append(loss_fn(bkd.zeros_like(error), error))
         
-        # print(losses)
         return losses, f_partition
 
     def train_next_batch(self):
@@ -189,7 +183,7 @@ class PDEWeightedSamples:
         pass
 
     def train_points(self):
-        # 计算出col points
+        # Sample collocation points and split them by subdomain. / 采样配点并按子域划分。
         X = np.empty((0, self.geom.dim), dtype=config.real(np))
         if self.num_domain > 0:
             if self.train_distribution == "uniform":

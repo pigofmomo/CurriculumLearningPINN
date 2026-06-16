@@ -1,3 +1,5 @@
+"""High-frequency Poisson benchmark experiment. / 高频Poisson方程基准实验。"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -356,55 +358,3 @@ if __name__ == "__main__":
     
     # run_root = BASE_DIR / f"multi_runs" / f"batch_20260327_180705"
     summarize_batch(run_root)
-    
-
-    ######### 最终数据
-    # pinn batch_20260506_013744 adam_5000_lbfgs_15000_seed_*_decay_epsi_0.0_data_weight_10.0_frame_weight_0.0_causal_begin_100000_adaptive_begin_100000_
-    # pde_residual                1071.133952     0.009956979089
-    # u_l2_relative              0.7854296694    3.533727148e-07
-    # u_max_abs                   4.888713266    0.0001893371405
-    # u_mse                      0.3980201231    3.631360675e-07
-    # Raw values by run:
-    # pde_residual: [1071.139038, 1071.25354, 1071.009277]
-    # u_l2_relative: [0.7851823969, 0.7862491514, 0.7848574599]
-    # u_max_abs: [4.874474968, 4.90731975, 4.88434508]
-    # u_mse: [0.3977693217, 0.3988508805, 0.397440167]
-    
-    # pinn-c1 w/o bridge batch_20260503_042433
-    # runs_pinn_weighted_samples/adam_5000_lbfgs_15000_seed_*_decay_epsi_1.0_data_weight_0.0_frame_weight_0.0_causal_begin_1000_adaptive_begin_10000_
-    # pde_residual                9.491293589        13.32794135
-    # u_l2_relative              0.1396995641      0.03370517735
-    # u_max_abs                  0.2671308187      0.07691828351
-    # u_mse                     0.03433795238     0.002347390581
-    # Raw values by run:
-    # pde_residual: [5.295949936, 14.19496441, 8.982966423]
-    # u_l2_relative: [0.005036744824, 0.3992735545, 0.014788393]
-    # u_max_abs: [0.03395203874, 0.6568468601, 0.1105935574]
-    # u_mse: [1.636779109e-05, 0.1028563877, 0.0001411016663]
-    
-    # pinn-c1 with bridge batch_20260504_145321
-    # runs_pinn_weighted_samples/adam_5000_lbfgs_15000_seed_*_decay_epsi_1.0_data_weight_10.0_frame_weight_0.0_causal_begin_1000_adaptive_begin_10000_
-    # pde_residual                7.698276043       0.9819748245
-    # u_l2_relative             0.01780244117    7.595667433e-05
-    # u_max_abs                 0.05414991044    1.044697721e-07
-    # u_mse                    0.000253486048     5.07968197e-08
-    # Raw values by run:
-    # pde_residual: [8.49787426, 8.295193672, 6.301760197]
-    # u_l2_relative: [0.01473176398, 0.02967524646, 0.009000313061]
-    # u_max_abs: [0.05458492041, 0.05405397602, 0.05381083488]
-    # u_mse: [0.0001400230975, 0.0005681707142, 5.226433242e-05]
-
-    # pinn-c2 batch_20260505_163941
-    # pde_residual                7.409820239       0.9937918339
-    # u_l2_relative             0.01050414052    1.259495666e-05
-    # u_max_abs                 0.05164243778    7.060530958e-06
-    # u_mse                   7.931491383e-05    2.831628589e-09
-    # Raw values by run:
-    # pde_residual: [8.437282562, 7.732108593, 6.060069561]
-    # u_l2_relative: [0.00875347907, 0.00730591955, 0.01545302293]
-    # u_max_abs: [0.0541228056, 0.04795753956, 0.05284696817]
-    # u_mse: [4.943693881e-05, 3.443816059e-05, 0.0001540696421]
-
-
-
-

@@ -1,6 +1,6 @@
 # Curriculum Learning PINN
 
-This repository contains the public research implementation for **Curriculum Learning of Physics-Informed Neural Networks Based on Spatial Correlation**.
+This repository contains the public research implementation for the arXiv paper **[Curriculum Learning of Physics-Informed Neural Networks based on Spatial Correlation](https://arxiv.org/abs/2605.15254)**.
 
 The code studies curriculum strategies for Physics-Informed Neural Networks (PINNs). It is organized around spatially structured training, low-frequency bridge constraints, and region-adaptive reweighting for boundary value problems and spatially coupled PDE systems.
 
@@ -27,6 +27,8 @@ The code studies curriculum strategies for Physics-Informed Neural Networks (PIN
 │   ├── poisson_high_fre/        # High-frequency 2D Poisson benchmark
 │   ├── adr/                     # 2D advection-diffusion-reaction benchmark
 │   └── ns2d/                    # 2D lid-driven Navier-Stokes benchmark and reference data
+├── experiments/experiment_results.md # Paper-facing result notes copied out of source comments
+├── LICENSE
 └── README.md
 ```
 
@@ -37,26 +39,35 @@ Key modules:
 - `pinn_pro/data.py`: data containers and loss construction for grouped residual, boundary, and supervised terms.
 - `pinn_pro/domain_decomp.py`: spatial partitioning helpers used by curriculum weighting.
 - `experiments/utils.py`: shared utilities for references, metrics, logging, plotting, and artifact saving.
+- `experiments/experiment_results.md`: compact paper-result notes that should not live inside executable scripts.
 
 ---
 
 ## Installation
 
-The implementation uses Python with DeepXDE and the PyTorch backend.
+The implementation uses Python, the PyTorch backend, and code paths that reuse/debug DeepXDE internals. For paper reproduction, prefer a local editable DeepXDE checkout instead of installing DeepXDE directly from PyPI. The development environment used DeepXDE around the `1.11.x` series; newer versions may work if the reused APIs remain compatible.
 
 ```bash
 # 1. Create and activate an environment, for example:
 conda create -n clpinn python=3.10 -y
 conda activate clpinn
 
-# 2. Install the main dependencies.
-pip install deepxde torch numpy scipy matplotlib
+# 2. Install numerical and plotting dependencies.
+pip install torch numpy scipy matplotlib
 
-# 3. Select the PyTorch backend for DeepXDE.
+# 3. Put DeepXDE in a local sibling directory so it can be inspected/debugged.
+#    Replace the tag with the exact local version you want to reproduce.
+git clone https://github.com/lululxvi/deepxde.git ../deepxde
+cd ../deepxde
+git checkout v1.11.0
+pip install -e .
+cd ../CurriculumLearningPINN
+
+# 4. Select the PyTorch backend for DeepXDE.
 export DDE_BACKEND=pytorch
 ```
 
-If you use CUDA, install the PyTorch build that matches your driver and CUDA toolkit from the official PyTorch instructions before running the experiments.
+If you already have a local DeepXDE source tree, install that tree with `pip install -e /path/to/deepxde` or ensure it is earlier on `PYTHONPATH` than any site-packages DeepXDE installation. If you use CUDA, install the PyTorch build that matches your driver and CUDA toolkit before running the experiments.
 
 ---
 
@@ -77,7 +88,7 @@ python experiments/adr/adr_cli.py --cuda-device 0
 python experiments/ns2d/ns2d_cli.py --cuda-device 0
 ```
 
-The CLI scripts expose curriculum hyperparameters such as the number of subdomains, reweighting interval, low-frequency bridge order, and data weights. Use `--help` to inspect available options:
+The CLI scripts expose curriculum hyperparameters such as the number of subdomains, reweighting interval, low-frequency bridge order, and data weights. They are designed for command-line batch runs and execute multiple seeds in one invocation, so the ADR and NS2D CLI commands can be launched in separate terminals or jobs when compute resources are available. Use `--help` to inspect available options:
 
 ```bash
 python experiments/adr/adr_cli.py --help
@@ -126,7 +137,7 @@ The current defaults are intended to document the main experimental setup used d
 3. Run the desired benchmark entry point from the repository root.
 4. Archive the generated `config.json`, `metrics.json`, `loss.dat`, and result figures for each run.
 
-Additional plotting scripts and exact paper command presets may be added as the paper release is finalized.
+Additional plotting scripts and exact paper command presets may be added as the paper release is finalized. Compact result notes that were previously kept in source-code comments are now collected in `experiments/experiment_results.md`.
 
 ---
 
@@ -135,11 +146,14 @@ Additional plotting scripts and exact paper command presets may be added as the 
 If this repository is useful for your research, please cite the accompanying paper once it is available.
 
 ```bibtex
-@misc{curriculum_learning_pinn_spatial_correlation,
-  title  = {Curriculum Learning of Physics-Informed Neural Networks Based on Spatial Correlation},
-  author = {To be updated},
-  year   = {2026},
-  note   = {Public research code release}
+@misc{chen2026curriculum,
+  title         = {Curriculum Learning of Physics-Informed Neural Networks based on Spatial Correlation},
+  author        = {Chen, Xujia and Hu, Xinyue and Chen, Letian and Shi, Daming and Fan, Wenhui},
+  year          = {2026},
+  eprint        = {2605.15254},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  doi           = {10.48550/arXiv.2605.15254}
 }
 ```
 
@@ -147,4 +161,4 @@ If this repository is useful for your research, please cite the accompanying pap
 
 ## License
 
-A license file has not yet been added. Please contact the authors before redistributing or using this code in downstream projects.
+This project is released under the MIT License. See [LICENSE](LICENSE) for details.
