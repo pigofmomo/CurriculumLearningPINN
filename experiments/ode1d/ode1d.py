@@ -59,32 +59,6 @@ class OdeConfig_l:
         "frame_data_weight": 0.0,
     })
     
-# low
-# pinn k_31.4__alpha_2.0_weight_bc_1.0_random_seed_0_decay_epsi_0.0_data_weight_0.0
-# metric                             mean           variance
-# ----------------------------------------------------------
-# pde_residual                9.222124378        34.04097188
-# u_l2_relative               1.518272598     0.008355493162
-# u_max_abs                   1.057786524     0.004182949631
-# u_mse                      0.3756933918     0.001950257896
-# strong bc k_31.4__alpha_2.0_weight_bc_100_random_seed_0_decay_epsi_0.0_data_weight_0.0
-# metric                             mean           variance
-# ----------------------------------------------------------
-# pde_residual                227.4546839        24554.59897
-# u_l2_relative              0.6854936895       0.1978237935
-# u_max_abs                  0.5768782727       0.1396667067
-# u_mse                      0.1084327811     0.005822780386
-# curriculum k_31.4__alpha_2.0_weight_bc_100_random_seed_0_decay_epsi_1.0_data_weight_0.0, 还不够好但是只要提高采样密度就更好了
-# metric                             mean           variance
-# ----------------------------------------------------------
-# pde_residual                7.051138322        10.38862809
-# u_l2_relative             0.05702196037    3.412992722e-05
-# u_max_abs                   0.051613222    3.863188162e-05
-# u_mse                   0.0005335582937    1.248980315e-08
-
-
-
-
 @dataclass
 class OdeConfig_h:
     # pde parameters 
@@ -125,30 +99,6 @@ class OdeConfig_h:
         "low_fre_data_weight": 10.0,
         "frame_data_weight": 0.0,
     })
-
-# high
-# pinn strong bc k_62.8__alpha_3.0_weight_bc_1000_random_seed_0_decay_epsi_0.0_data_weight_0.0
-# metric                             mean           variance
-# ----------------------------------------------------------
-# pde_residual                1601.934343         1281752.89
-# u_l2_relative               0.677646851       0.2078714661
-# u_max_abs                   1.212041824       0.6655376074
-# u_mse                      0.4077168392      0.08284756118
-# curriculum k_62.8__alpha_3.0_weight_bc_1000_random_seed_0_decay_epsi_1.0_data_weight_0.0
-# metric                             mean           variance
-# ----------------------------------------------------------
-# pde_residual                64.46562926        4495.754723
-# u_l2_relative                1.46894297        1.021424223
-# u_max_abs                   1.816864935        1.712849811
-# u_mse                       1.943135685         4.24848724
-# curriculum interp k_62.8__alpha_3.0_weight_bc_1000_random_seed_0_decay_epsi_1.0_data_weight_0.1  data_weight:0.1 1.0 10.0(最好) 100.0
-# metric                             mean           variance
-# ----------------------------------------------------------
-# pde_residual                1.754014651        0.201761435
-# u_l2_relative             0.03499991091    6.414125294e-07
-# u_max_abs                 0.07067479211    1.876606345e-06
-# u_mse                   0.0007491073883    1.193149457e-09
-
 
 class Ode1D:
     def __init__(self, config: OdeConfig_l):

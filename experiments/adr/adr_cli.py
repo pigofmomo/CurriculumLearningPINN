@@ -121,33 +121,3 @@ def main() -> None:
 
 if __name__ == "__main__":
 	main()
-
-####### bc weight 10000 最终数据
-# pinn
-# batch_20260510_014034 adam_5000_lbfgs_5000_seed_*_decay_epsi_0.0_data_weight_0.0_frame_weight_0.0_causal_begin_1000_adaptive_begin_100000_
-# pde_residual               0.4893984894     0.002336250642
-# u_l2_relative            0.007823882322    5.314606879e-07
-# u_max_abs                 0.02476652721    1.709921735e-05
-# u_mse                   1.525867898e-05    8.296625026e-12
-
-# pinn-c1 w/o bridge
-# batch_20260510_022505 adam_5000_lbfgs_5000_seed_*_decay_epsi_0.5_data_weight_0.0_frame_weight_0.0_causal_begin_1000_adaptive_begin_100000_
-# pde_residual               0.3480014801     0.002711520074
-# u_l2_relative            0.006696990471    2.898515761e-06
-# u_max_abs                 0.02220673659    0.0001017478216
-# u_mse                   1.179980869e-05    3.454610287e-11
-
-# pinn-c1 with bridge
-# batch_20260510_022518 adam_5000_lbfgs_5000_seed_*_decay_epsi_0.5_data_weight_10.0_frame_weight_0.0_causal_begin_1000_adaptive_begin_100000_
-# pde_residual               0.3476649324     0.006977089821
-# u_l2_relative            0.006316965406    5.504733372e-06
-# u_max_abs                 0.02579495029    0.0002152071103
-# u_mse                   1.122167981e-05    6.852693001e-11
-
-# pinn-c2
-# "grad_norms_scale": 2.0, "scale": 3.0
-# batch_20260510_053610 adam_5000_lbfgs_5000_seed_*_decay_epsi_0.5_data_weight_10.0_frame_weight_0.0_causal_begin_1000_adaptive_begin_5000_
-# pde_residual                0.349464645     0.001327310899
-# u_l2_relative             0.00571227863    7.204612767e-08
-# u_max_abs                 0.01559431038    2.891733038e-06
-# u_mse                   8.081548865e-06    5.653415105e-13

@@ -334,6 +334,3 @@ if __name__ == "__main__":
     
     # run_root = BASE_DIR / f"multi_runs_cli" / f"batch_20260509_020219"
     # summarize_batch(run_root)
-
-
-# 每个耗时1800+2700=4300s=1.2h，3次大约3.6h
