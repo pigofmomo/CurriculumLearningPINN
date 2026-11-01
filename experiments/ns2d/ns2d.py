@@ -1,5 +1,3 @@
-"""Two-dimensional lid-driven Navier-Stokes benchmark definition. / 二维顶盖驱动Navier-Stokes基准定义。"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -17,53 +15,66 @@ import pinn_pro
 
 BASE_DIR = Path(__file__).resolve().parent
 
+
 @dataclass
 class NS2DConfig:
-    # PDE parameters. / PDE参数。
     reynolds: float = 100.0
     lid_coefficient: float = 8
     data_file: str = BASE_DIR / f"data/lid_driven_a{int(lid_coefficient)}.dat"
 
-    # Geometry settings. / 几何区域设置。
     spatial_domain = ([0.0, 0.0], [1.0, 1.0])
 
-    # Sampling point counts. / 采样点数量。
     num_domain: int = 2500
     num_boundary: int = 400
 
-    # Training configuration. / 训练配置。
     learning_rate: float = 1e-3
     adam_iterations: int = 5000
     lbfgs_iterations: int = 3000
-    opt_decay = ['step', 1000, 0.9]
+    opt_decay = ["step", 1000, 0.9]
     net_width: int = 60
     net_depth: int = 6
     grid_resolution: int = 120
-    loss_weights: Tuple[float, float, float, float, float, float, float, float] = (1.0, 1.0, 1.0, 100.0, 100.0, 100.0, 100.0, 100.0)
-    loss_headers = ["loss momentum x", "loss momentum y", "loss continuity",
-                    "loss BC u top", "loss BC v top",
-                    "loss BC u other", "loss BC v other",
-                    "loss BC p fix"]
+    loss_weights: Tuple[float, float, float, float, float, float, float, float] = (
+        1.0,
+        1.0,
+        1.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+    )
+    loss_headers = [
+        "loss momentum x",
+        "loss momentum y",
+        "loss continuity",
+        "loss BC u top",
+        "loss BC v top",
+        "loss BC u other",
+        "loss BC v other",
+        "loss BC p fix",
+    ]
     train_distribution: str = "uniform"
 
-    # Random seed. / 随机种子。
     seed: int = 0
 
-    reweight_config: dict = field(default_factory=lambda: {
-        "decay_epsi": 1.0, # 0.5
-        "num_subdomains": [5,5],
-        "reweight_every": 500,
-        "reweight_causal_begin": 1000,
-        "reweight_causal_end": 5000,
-        "reweight_adaptive_begin": 100000,
-        "reweight_adaptive_end": 100000,
-        "log": True,
-        "scale": 2,
-        "grad_norms_scale": 1,
-        "low_fre_n": 3,
-        "low_fre_data_weight": 0.0,
-        "frame_data_weight": 0.0,
-    })
+    reweight_config: dict = field(
+        default_factory=lambda: {
+            "decay_epsi": 1.0,  # 0.5
+            "num_subdomains": [5, 5],
+            "reweight_every": 500,
+            "reweight_causal_begin": 1000,
+            "reweight_causal_end": 5000,
+            "reweight_adaptive_begin": 100000,
+            "reweight_adaptive_end": 100000,
+            "log": True,
+            "scale": 2,
+            "grad_norms_scale": 1,
+            "low_fre_n": 3,
+            "low_fre_data_weight": 0.0,
+            "frame_data_weight": 0.0,
+        }
+    )
 
 
 class NS2D:
@@ -115,29 +126,38 @@ class NS2D:
 
         return pde
 
-
     def boundary_top(self, x, on_boundary):
         return on_boundary and np.isclose(x[1], 1.0)
-
 
     def boundary_not_top(self, x, on_boundary):
         return on_boundary and not np.isclose(x[1], 1.0)
 
-
     def lid_velocity(self, a: float):
         def velocity(x):
             return a * x[:, 0:1] * (1.0 - x[:, 0:1])
+
         return velocity
 
     def make_domain(self, config):
-        geom = dde.geometry.Rectangle(config.spatial_domain[0], config.spatial_domain[1])
+        geom = dde.geometry.Rectangle(
+            config.spatial_domain[0], config.spatial_domain[1]
+        )
         return geom
 
     def make_dataset_pinn(self, geom, reference_fn, config: NS2DConfig):
-        bc_u_top = dde.DirichletBC(geom, self.lid_velocity(config.lid_coefficient), self.boundary_top, component=0)
+        bc_u_top = dde.DirichletBC(
+            geom,
+            self.lid_velocity(config.lid_coefficient),
+            self.boundary_top,
+            component=0,
+        )
         bc_v_top = dde.DirichletBC(geom, lambda _: 0.0, self.boundary_top, component=1)
-        bc_u_other = dde.DirichletBC(geom, lambda _: 0.0, self.boundary_not_top, component=0)
-        bc_v_other = dde.DirichletBC(geom, lambda _: 0.0, self.boundary_not_top, component=1)
+        bc_u_other = dde.DirichletBC(
+            geom, lambda _: 0.0, self.boundary_not_top, component=0
+        )
+        bc_v_other = dde.DirichletBC(
+            geom, lambda _: 0.0, self.boundary_not_top, component=1
+        )
         bc_p = dde.PointSetBC(np.array([[0.0, 0.0]]), np.array([[0.0]]), component=2)
         data = dde.data.PDE(
             geom,
@@ -146,16 +166,27 @@ class NS2D:
             num_domain=config.num_domain,
             num_boundary=config.num_boundary,
             train_distribution=config.train_distribution,
-            solution=reference_fn
+            solution=reference_fn,
         )
         enforce_dataset_dtype(data, ddeconfig.real(np))
         return data
 
-    def make_dataset_pinn_weighted_samples(self, geom, reference_fn, config: NS2DConfig):
-        bc_u_top = dde.DirichletBC(geom, self.lid_velocity(config.lid_coefficient), self.boundary_top, component=0)
+    def make_dataset_pinn_weighted_samples(
+        self, geom, reference_fn, config: NS2DConfig
+    ):
+        bc_u_top = dde.DirichletBC(
+            geom,
+            self.lid_velocity(config.lid_coefficient),
+            self.boundary_top,
+            component=0,
+        )
         bc_v_top = dde.DirichletBC(geom, lambda _: 0.0, self.boundary_top, component=1)
-        bc_u_other = dde.DirichletBC(geom, lambda _: 0.0, self.boundary_not_top, component=0)
-        bc_v_other = dde.DirichletBC(geom, lambda _: 0.0, self.boundary_not_top, component=1)
+        bc_u_other = dde.DirichletBC(
+            geom, lambda _: 0.0, self.boundary_not_top, component=0
+        )
+        bc_v_other = dde.DirichletBC(
+            geom, lambda _: 0.0, self.boundary_not_top, component=1
+        )
         bc_p = dde.PointSetBC(np.array([[0.0, 0.0]]), np.array([[0.0]]), component=2)
         data = pinn_pro.PDEWeightedSamples(
             geom,
@@ -172,7 +203,7 @@ class NS2D:
 
     def make_dataset_function(self, geom, reference_fn, config: NS2DConfig):
         num_train = config.num_domain + config.num_boundary
-        num_test = config.grid_resolution ** 2
+        num_test = config.grid_resolution**2
         data = dde.data.Function(
             geom,
             reference_fn,
@@ -198,17 +229,22 @@ class NS2D:
         values = data[:, 2:5]
         return coords, values
 
-    def component_metrics(self, y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
+    def component_metrics(
+        self, y_true: np.ndarray, y_pred: np.ndarray
+    ) -> Dict[str, float]:
         labels = ["u", "v", "p"]
         result: Dict[str, float] = {}
         for idx, label in enumerate(labels):
             true_comp = y_true[:, idx : idx + 1]
             pred_comp = y_pred[:, idx : idx + 1]
-            result[f"{label}_mse"] = float(dde.metrics.mean_squared_error(true_comp, pred_comp))
-            result[f"{label}_l2_relative"] = float(dde.metrics.l2_relative_error(true_comp, pred_comp))
+            result[f"{label}_mse"] = float(
+                dde.metrics.mean_squared_error(true_comp, pred_comp)
+            )
+            result[f"{label}_l2_relative"] = float(
+                dde.metrics.l2_relative_error(true_comp, pred_comp)
+            )
             result[f"{label}_max_abs"] = max_absolute_error(true_comp, pred_comp)
         return result
-
 
     def make_grid(self, config: NS2DConfig):
         x_range = [config.spatial_domain[0][0], config.spatial_domain[1][0]]
@@ -219,7 +255,16 @@ class NS2D:
         grid_points = np.column_stack((grid_x.ravel(), grid_y.ravel()))
         return grid_x, grid_y, grid_points
 
-    def plot_fields(self, coords, values_true, grid_x, grid_y, grid_pred, save_path: Path, loss_record: str = ""):
+    def plot_fields(
+        self,
+        coords,
+        values_true,
+        grid_x,
+        grid_y,
+        grid_pred,
+        save_path: Path,
+        loss_record: str = "",
+    ):
         labels = ["u", "v", "p"]
 
         fig, axes = plt.subplots(4, 3, figsize=(18, 16))
@@ -239,11 +284,12 @@ class NS2D:
             v_clean = np.nan_to_num(v_field)
             x_axis = grid_x[0, :]
             y_axis = grid_y[:, 0]
-            ax.streamplot(x_axis, y_axis, u_clean, v_clean, color="k", linewidth=1, density=3)
+            ax.streamplot(
+                x_axis, y_axis, u_clean, v_clean, color="k", linewidth=1, density=3
+            )
             ax.set_xlabel(r"$x$")
             ax.set_ylabel(r"$y$")
             ax.set_title(title, fontsize=10)
-            # Add a thin empty colorbar so line plots match heatmap widths. / 添加细空色条，使折线图宽度与热图一致。
             sm = plt.cm.ScalarMappable(cmap="Greys")
             sm.set_array([])
             cbar = ax.get_figure().colorbar(sm, ax=ax, fraction=0.046, pad=0.04)
@@ -251,7 +297,9 @@ class NS2D:
             cbar.outline.set_visible(False)
 
         for idx, label in enumerate(labels):
-            ref_grid = np.nan_to_num(griddata(coords, values_true[:, idx], (grid_x, grid_y), method="cubic"))
+            ref_grid = np.nan_to_num(
+                griddata(coords, values_true[:, idx], (grid_x, grid_y), method="cubic")
+            )
             pred_grid = grid_pred[:, :, idx]
             error_grid = np.nan_to_num(np.abs(pred_grid - ref_grid))
 
@@ -262,8 +310,22 @@ class NS2D:
             plot_heatmap(axes[idx, 1], grid_x, grid_y, pred_grid, f"Pred {label}")
             plot_heatmap(axes[idx, 2], grid_x, grid_y, error_grid, f"|Δ{label}|")
 
-        plot_streamlines(axes[3, 0], grid_x, grid_y, ref_fields[0], ref_fields[1], "Reference velocity field")
-        plot_streamlines(axes[3, 1], grid_x, grid_y, pred_fields[0], pred_fields[1], "Predicted velocity field")
+        plot_streamlines(
+            axes[3, 0],
+            grid_x,
+            grid_y,
+            ref_fields[0],
+            ref_fields[1],
+            "Reference velocity field",
+        )
+        plot_streamlines(
+            axes[3, 1],
+            grid_x,
+            grid_y,
+            pred_fields[0],
+            pred_fields[1],
+            "Predicted velocity field",
+        )
         axes[3, 2].axis("off")
 
         fig.suptitle("2D Navier-Stokes Fields " + loss_record, fontsize=10)
@@ -272,7 +334,9 @@ class NS2D:
         fig.savefig(save_path)
         plt.close(fig)
 
-    def plot_pde_loss_grad(self, loss_weight_list, loss_list, grad_list, save_path: Path):
+    def plot_pde_loss_grad(
+        self, loss_weight_list, loss_list, grad_list, save_path: Path
+    ):
         save_path.parent.mkdir(parents=True, exist_ok=True)
         n_x, n_y = self.config.reweight_config["num_subdomains"]
         weight_arr = np.asarray(loss_weight_list, dtype=float).reshape(n_x, n_y)
@@ -292,7 +356,15 @@ class NS2D:
             ax.set_title(title)
             for i in range(n_x):
                 for j in range(n_y):
-                    ax.text(i, j, format(data[i, j], fmt), ha="center", va="center", fontsize=6, color="k")
+                    ax.text(
+                        i,
+                        j,
+                        format(data[i, j], fmt),
+                        ha="center",
+                        va="center",
+                        fontsize=6,
+                        color="k",
+                    )
             fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
         plot_grid(axes[0], weight_arr, "Loss weight per subdomain", "Greens", fmt=".2f")
@@ -302,29 +374,3 @@ class NS2D:
         fig.tight_layout()
         fig.savefig(save_path)
         plt.close(fig)
-
-if __name__ == "__main__":
-    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-    torch.cuda.set_device(device)
-
-
-    num_runs = 3
-    base_seed = 0
-    seeds = [base_seed + i for i in range(num_runs)]
-
-    batch_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_root = BASE_DIR / f"multi_runs" / f"batch_{batch_tag}"
-    run_root.mkdir(parents=True, exist_ok=True)
-
-    for run_idx, seed in enumerate(seeds):
-        if seed is None:
-            continue
-        config = NS2DConfig()
-        config.seed = int(seed)
-        ns2d_model = NS2D(config)
-        run_base_dir = run_root / f"run_{run_idx:02d}_seed_{config.seed}"
-        run_base_dir.mkdir(parents=True, exist_ok=True)
-
-        pinn_space_weight = pinn_pro.PINNWeightedSamples(ns2d_model, run_base_dir)
-        pinn_space_weight.train_and_evaluate()

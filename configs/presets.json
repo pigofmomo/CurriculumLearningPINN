@@ -1,0 +1,418 @@
+{
+  "main/ode_low": {
+    "case": "ode_low",
+    "runner": "internal"
+  },
+  "causal/ode_low": {
+    "case": "ode_low",
+    "runner": "internal",
+    "gate_schedule": "fixed_thirds",
+    "overrides": {
+      "reweight_config": {
+        "decay_epsi": 1.0,
+        "frame_data_weight": 0.0,
+        "low_fre_data_weight": 0.0,
+        "low_fre_n": 2,
+        "num_subdomains": 5,
+        "record_every": 1000,
+        "reweight_adaptive_begin": 100000,
+        "reweight_adaptive_end": 100000,
+        "reweight_causal_begin": 100000,
+        "reweight_causal_end": 100000,
+        "reweight_every": 1000,
+        "causal_end_inclusive": true
+      }
+    }
+  },
+  "xpinn/ode_low": {
+    "case": "ode_low",
+    "runner": "xpinn",
+    "partition": "intervals",
+    "width": 28,
+    "flux_weight": 0.0
+  },
+  "fbpinn/ode_low": {
+    "case": "ode_low",
+    "runner": "fbpinn",
+    "partition": "intervals",
+    "width": 28,
+    "flux_weight": 0.0
+  },
+  "main/ode_high": {
+    "case": "ode_high",
+    "runner": "internal"
+  },
+  "causal/ode_high": {
+    "case": "ode_high",
+    "runner": "internal",
+    "gate_schedule": "fixed_thirds",
+    "overrides": {
+      "reweight_config": {
+        "decay_epsi": 1.0,
+        "frame_data_weight": 0.0,
+        "low_fre_data_weight": 0.0,
+        "low_fre_n": 2,
+        "num_subdomains": 5,
+        "record_every": 1000,
+        "reweight_adaptive_begin": 100000,
+        "reweight_adaptive_end": 100000,
+        "reweight_causal_begin": 100000,
+        "reweight_causal_end": 100000,
+        "reweight_every": 1000,
+        "causal_end_inclusive": true
+      }
+    }
+  },
+  "xpinn/ode_high": {
+    "case": "ode_high",
+    "runner": "xpinn",
+    "partition": "intervals",
+    "width": 28,
+    "flux_weight": 0.0,
+    "overrides": {
+      "reweight_config": {
+        "decay_epsi": 1.0,
+        "frame_data_weight": 0.0,
+        "low_fre_data_weight": 10.0,
+        "low_fre_n": 2,
+        "num_subdomains": 5,
+        "record_every": 1000,
+        "reweight_adaptive_begin": 100000,
+        "reweight_adaptive_end": 100000,
+        "reweight_causal_begin": 1000,
+        "reweight_causal_end": 8000,
+        "reweight_every": 1000,
+        "causal_end_inclusive": false
+      }
+    }
+  },
+  "fbpinn/ode_high": {
+    "case": "ode_high",
+    "runner": "fbpinn",
+    "partition": "intervals",
+    "width": 28,
+    "flux_weight": 0.0,
+    "overrides": {
+      "reweight_config": {
+        "decay_epsi": 1.0,
+        "frame_data_weight": 0.0,
+        "low_fre_data_weight": 10.0,
+        "low_fre_n": 2,
+        "num_subdomains": 5,
+        "record_every": 1000,
+        "reweight_adaptive_begin": 100000,
+        "reweight_adaptive_end": 100000,
+        "reweight_causal_begin": 1000,
+        "reweight_causal_end": 8000,
+        "reweight_every": 1000,
+        "causal_end_inclusive": false
+      }
+    }
+  },
+  "main/poisson": {
+    "case": "poisson",
+    "runner": "internal"
+  },
+  "causal/poisson": {
+    "case": "poisson",
+    "runner": "internal",
+    "gate_schedule": "fixed_thirds",
+    "overrides": {
+      "reweight_config": {
+        "decay_epsi": 1.0,
+        "frame_data_weight": 0.0,
+        "grad_norms_scale": 0.5,
+        "log": true,
+        "low_fre_data_weight": 0.0,
+        "low_fre_n": 2,
+        "num_subdomains": [
+          5,
+          5
+        ],
+        "reweight_adaptive_begin": 100000,
+        "reweight_adaptive_end": 100000,
+        "reweight_causal_begin": 100000,
+        "reweight_causal_end": 100000,
+        "reweight_every": 1000,
+        "scale": 3,
+        "causal_end_inclusive": false
+      }
+    }
+  },
+  "xpinn/poisson": {
+    "case": "poisson",
+    "runner": "xpinn",
+    "partition": "rings",
+    "width": 28,
+    "flux_weight": 0.0
+  },
+  "fbpinn/poisson/strips": {
+    "case": "poisson",
+    "runner": "fbpinn",
+    "partition": "strips",
+    "width": 28,
+    "flux_weight": 0.0
+  },
+  "fbpinn/poisson/rings": {
+    "case": "poisson",
+    "runner": "fbpinn",
+    "partition": "rings",
+    "width": 28,
+    "flux_weight": 0.0
+  },
+  "ars/poisson": {
+    "case": "poisson",
+    "runner": "ars"
+  },
+  "main/adr": {
+    "case": "adr",
+    "runner": "internal"
+  },
+  "causal/adr": {
+    "case": "adr",
+    "runner": "internal",
+    "gate_schedule": "fixed_thirds",
+    "overrides": {
+      "reweight_config": {
+        "decay_epsi": 0.5,
+        "frame_data_weight": 0.0,
+        "grad_norms_scale": 2.0,
+        "log": true,
+        "low_fre_data_weight": 0.0,
+        "low_fre_n": 2,
+        "num_subdomains": [
+          5,
+          5
+        ],
+        "reweight_adaptive_begin": 100000,
+        "reweight_adaptive_end": 100000,
+        "reweight_causal_begin": 100000,
+        "reweight_causal_end": 100000,
+        "reweight_every": 500,
+        "scale": 5.0,
+        "causal_end_inclusive": false
+      }
+    }
+  },
+  "xpinn/adr": {
+    "case": "adr",
+    "runner": "xpinn",
+    "partition": "rings",
+    "width": 28,
+    "flux_weight": 0.0,
+    "overrides": {
+      "reweight_config": {
+        "decay_epsi": 0.5,
+        "frame_data_weight": 0.0,
+        "grad_norms_scale": 2.0,
+        "log": true,
+        "low_fre_data_weight": 0.0,
+        "low_fre_n": 2,
+        "num_subdomains": [
+          5,
+          5
+        ],
+        "reweight_adaptive_begin": 100000,
+        "reweight_adaptive_end": 100000,
+        "reweight_causal_begin": 1000,
+        "reweight_causal_end": 5000,
+        "reweight_every": 500,
+        "scale": 5.0,
+        "causal_end_inclusive": false
+      }
+    }
+  },
+  "fbpinn/adr/strips": {
+    "case": "adr",
+    "runner": "fbpinn",
+    "partition": "strips",
+    "width": 28,
+    "flux_weight": 0.0,
+    "overrides": {
+      "reweight_config": {
+        "decay_epsi": 0.5,
+        "frame_data_weight": 0.0,
+        "grad_norms_scale": 2.0,
+        "log": true,
+        "low_fre_data_weight": 0.0,
+        "low_fre_n": 2,
+        "num_subdomains": [
+          5,
+          5
+        ],
+        "reweight_adaptive_begin": 100000,
+        "reweight_adaptive_end": 100000,
+        "reweight_causal_begin": 1000,
+        "reweight_causal_end": 5000,
+        "reweight_every": 500,
+        "scale": 5.0,
+        "causal_end_inclusive": false
+      }
+    }
+  },
+  "fbpinn/adr/rings": {
+    "case": "adr",
+    "runner": "fbpinn",
+    "partition": "rings",
+    "width": 28,
+    "flux_weight": 0.0,
+    "overrides": {
+      "reweight_config": {
+        "decay_epsi": 0.5,
+        "frame_data_weight": 0.0,
+        "grad_norms_scale": 2.0,
+        "log": true,
+        "low_fre_data_weight": 0.0,
+        "low_fre_n": 2,
+        "num_subdomains": [
+          5,
+          5
+        ],
+        "reweight_adaptive_begin": 100000,
+        "reweight_adaptive_end": 100000,
+        "reweight_causal_begin": 1000,
+        "reweight_causal_end": 5000,
+        "reweight_every": 500,
+        "scale": 5.0,
+        "causal_end_inclusive": false
+      }
+    }
+  },
+  "ars/adr": {
+    "case": "adr",
+    "runner": "ars"
+  },
+  "main/ns": {
+    "case": "ns",
+    "runner": "internal"
+  },
+  "causal/ns": {
+    "case": "ns",
+    "runner": "internal",
+    "gate_schedule": "fixed_thirds",
+    "overrides": {
+      "reweight_config": {
+        "decay_epsi": 1.0,
+        "frame_data_weight": 0.0,
+        "grad_norms_scale": 1.0,
+        "log": true,
+        "low_fre_data_weight": 0.0,
+        "low_fre_n": 3,
+        "num_subdomains": [
+          5,
+          5
+        ],
+        "reweight_adaptive_begin": 100000,
+        "reweight_adaptive_end": 100000,
+        "reweight_causal_begin": 100000,
+        "reweight_causal_end": 100000,
+        "reweight_every": 500,
+        "scale": 2.0,
+        "causal_end_inclusive": false
+      }
+    }
+  },
+  "xpinn/ns": {
+    "case": "ns",
+    "runner": "xpinn",
+    "partition": "rings",
+    "width": 34,
+    "flux_weight": 0.0,
+    "overrides": {
+      "reweight_config": {
+        "decay_epsi": 1.0,
+        "frame_data_weight": 0.0,
+        "grad_norms_scale": 1.0,
+        "log": true,
+        "low_fre_data_weight": 0.0,
+        "low_fre_n": 3,
+        "num_subdomains": [
+          5,
+          5
+        ],
+        "reweight_adaptive_begin": 100000,
+        "reweight_adaptive_end": 100000,
+        "reweight_causal_begin": 1000,
+        "reweight_causal_end": 3000,
+        "reweight_every": 500,
+        "scale": 2.0,
+        "causal_end_inclusive": false
+      }
+    }
+  },
+  "fbpinn/ns/strips": {
+    "case": "ns",
+    "runner": "fbpinn",
+    "partition": "strips",
+    "width": 34,
+    "flux_weight": 0.0,
+    "overrides": {
+      "reweight_config": {
+        "decay_epsi": 1.0,
+        "frame_data_weight": 0.0,
+        "grad_norms_scale": 1.0,
+        "log": true,
+        "low_fre_data_weight": 0.0,
+        "low_fre_n": 3,
+        "num_subdomains": [
+          5,
+          5
+        ],
+        "reweight_adaptive_begin": 100000,
+        "reweight_adaptive_end": 100000,
+        "reweight_causal_begin": 1000,
+        "reweight_causal_end": 3000,
+        "reweight_every": 500,
+        "scale": 2.0,
+        "causal_end_inclusive": false
+      }
+    }
+  },
+  "fbpinn/ns/rings": {
+    "case": "ns",
+    "runner": "fbpinn",
+    "partition": "rings",
+    "width": 34,
+    "flux_weight": 0.0,
+    "overrides": {
+      "reweight_config": {
+        "decay_epsi": 1.0,
+        "frame_data_weight": 0.0,
+        "grad_norms_scale": 1.0,
+        "log": true,
+        "low_fre_data_weight": 0.0,
+        "low_fre_n": 3,
+        "num_subdomains": [
+          5,
+          5
+        ],
+        "reweight_adaptive_begin": 100000,
+        "reweight_adaptive_end": 100000,
+        "reweight_causal_begin": 1000,
+        "reweight_causal_end": 3000,
+        "reweight_every": 500,
+        "scale": 2.0,
+        "causal_end_inclusive": false
+      }
+    }
+  },
+  "ars/ns": {
+    "case": "ns",
+    "runner": "ars"
+  },
+  "pb/outer": {
+    "case": "pb",
+    "runner": "pb",
+    "order": "outer"
+  },
+  "pb/inner": {
+    "case": "pb",
+    "runner": "pb",
+    "order": "inner"
+  },
+  "pb/uniform": {
+    "case": "pb",
+    "runner": "pb",
+    "order": "uniform"
+  }
+}
