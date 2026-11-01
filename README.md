@@ -1,147 +1,68 @@
-# Curriculum Learning PINN
+# CurriculumLearningPINN
 
-This repository contains the public research implementation for the arXiv paper **[Curriculum Learning of Physics-Informed Neural Networks based on Spatial Correlation](https://arxiv.org/abs/2605.15254)**.
+Spatial curriculum PINNs with regional residual weighting and a polynomial information bridge. Examples cover low- and high-frequency ODEs, Poisson, ADR, and steady Navier–Stokes equations.
 
-The code studies curriculum strategies for Physics-Informed Neural Networks (PINNs). It is organized around spatially structured training, low-frequency bridge constraints, and region-adaptive reweighting for boundary value problems and spatially coupled PDE systems.
+## Setup
 
-> **Repository status:** this is a research code release. The core experiment runners and reusable PINN components are included; APIs may still change while the paper artifacts are finalized.
-
----
-
-## Highlights
-
-- **Spatial curriculum learning**: partitions the computational domain into subregions and adjusts training emphasis according to spatial relationships.
-- **Low-frequency information bridge**: uses sparse anchor information to stabilize global low-frequency behavior across separated regions.
-- **Region-adaptive reweighting**: updates subregion-wise PDE losses based on local residual and optimization status.
-- **Reproducible artifacts**: experiment runners save configurations, losses, metrics, checkpoints, logs, and result figures under per-experiment run directories.
-
----
-
-## Repository layout
-
-```text
-.
-├── pinn_pro/                    # Reusable PINN runners, weighted-sample model, data utilities, domain decomposition
-├── experiments/
-│   ├── ode1d/                   # One-dimensional ODE benchmark
-│   ├── poisson_high_fre/        # High-frequency 2D Poisson benchmark
-│   ├── adr/                     # 2D advection-diffusion-reaction benchmark
-│   └── ns2d/                    # 2D lid-driven Navier-Stokes benchmark and reference data
-├── experiments/experiment_results.md # Paper-facing result notes copied out of source comments
-├── LICENSE
-└── README.md
-```
-
-Key modules:
-
-- `pinn_pro/pinn.py`: training/evaluation wrappers for baseline PINN and weighted-sample curriculum PINN runs.
-- `pinn_pro/model.py`: DeepXDE/PyTorch-compatible model implementation for weighted collocation groups.
-- `pinn_pro/data.py`: data containers and loss construction for grouped residual, boundary, and supervised terms.
-- `pinn_pro/domain_decomp.py`: spatial partitioning helpers used by curriculum weighting.
-- `experiments/utils.py`: shared utilities for references, metrics, logging, plotting, and artifact saving.
-- `experiments/experiment_results.md`: compact paper-result notes that should not live inside executable scripts.
-
----
-
-## Installation
-
-The implementation uses Python, the PyTorch backend, and code paths that reuse/debug DeepXDE internals. For paper reproduction, prefer a local editable DeepXDE checkout instead of installing DeepXDE directly from PyPI. The development environment used DeepXDE around the `1.11.x` series; newer versions may work if the reused APIs remain compatible.
+Python 3.10:
 
 ```bash
-# 1. Create and activate an environment, for example:
-conda create -n clpinn python=3.10 -y
-conda activate clpinn
-
-# 2. Install numerical and plotting dependencies.
-pip install torch numpy scipy matplotlib
-
-# 3. Put DeepXDE in a local sibling directory so it can be inspected/debugged.
-#    Replace the tag with the exact local version you want to reproduce.
-git clone https://github.com/lululxvi/deepxde.git ../deepxde
-cd ../deepxde
-git checkout v1.11.0
-pip install -e .
-cd ../CurriculumLearningPINN
-
-# 4. Select the PyTorch backend for DeepXDE.
-export DDE_BACKEND=pytorch
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python check.py
 ```
 
-If you already have a local DeepXDE source tree, install that tree with `pip install -e /path/to/deepxde` or ensure it is earlier on `PYTHONPATH` than any site-packages DeepXDE installation. If you use CUDA, install the PyTorch build that matches your driver and CUDA toolkit before running the experiments.
+The runner selects the DeepXDE PyTorch backend. For GPU training, install a PyTorch wheel compatible with your CUDA driver.
 
----
-
-## Quick start
-
-Run commands from the repository root.
+## Run
 
 ```bash
-export DDE_BACKEND=pytorch
-python experiments/ode1d/ode1d.py
+python run.py --list
+python run.py --preset main/ode_high --smoke --output outputs/check
+CUDA_VISIBLE_DEVICES=0 python run.py --preset main/ode_high --seed 0 --device cuda --output outputs/ode_high
 ```
 
-The ODE example is the smallest benchmark and is useful for checking that the environment works. Larger 2D experiments can be launched with:
+`--smoke` runs a few updates to check installation. Omit it for the configured training budget. Output directories must be new. Configuration, predictions, and metrics are saved with each run.
+
+The main examples are `main/ode_low`, `main/ode_high`, `main/poisson`, `main/adr`, and `main/ns`. Their settings are in `configs/cases.json`.
+
+For a sensitivity or ablation run:
 
 ```bash
-python experiments/poisson_high_fre/poisson_high_fre.py
-python experiments/adr/adr_cli.py --cuda-device 0
-python experiments/ns2d/ns2d_cli.py --cuda-device 0
+python run.py --preset main/poisson --stage c1 --layers 3 --epsilon 0.5 --seed 0 --output outputs/poisson_c1
+python run.py --preset main/poisson --bridge-weight 0 --seed 0 --output outputs/poisson_no_bridge
 ```
 
-The CLI scripts expose curriculum hyperparameters such as the number of subdomains, reweighting interval, low-frequency bridge order, and data weights. They are designed for command-line batch runs and execute multiple seeds in one invocation, so the ADR and NS2D CLI commands can be launched in separate terminals or jobs when compute resources are available. Use `--help` to inspect available options:
+`--layers L` uses `2L-1` intervals per coordinate. `--degree` selects the bridge polynomial degree. `--stage c1` disables second-stage adaptation; `--stage plain` disables both curriculum stages and the bridge. These options define new runs from the supplied example configuration.
+
+## Comparisons
+
+The same entry point provides `causal/*` (cumulative spatial hard gate), `ars/*` (ARS-derived regional weighting after C1), `xpinn/*`, and `pb/outer`, `pb/inner`, `pb/uniform`.
+
+FBPINN uses a separate JAX environment:
 
 ```bash
-python experiments/adr/adr_cli.py --help
-python experiments/ns2d/ns2d_cli.py --help
+python -m venv .venv-fbpinn
+source .venv-fbpinn/bin/activate
+pip install -r requirements-fbpinn.txt
+python run.py --preset fbpinn/poisson/rings --smoke --output outputs/fbpinn_check
 ```
 
----
+The dependency file installs CPU JAX. GPU runs require the matching JAX CUDA plugin. FBPINN includes five-interval ODE examples and both `strips` and `rings` for 2D problems. XPINN uses five ODE intervals or three square rings.
 
-## Outputs
+## Layout
 
-Experiment outputs are written inside each experiment directory, for example:
+- `pinn_pro/`: main training and regional weighting.
+- `experiments/`: PDE definitions and NS reference data.
+- `comparisons/`: supplemental methods and equation adapters.
+- `configs/`: example configurations and runner selection.
+- `third_party/`: the FBPINN library and required notices.
 
-- `runs_pinn/`: baseline PINN runs.
-- `runs_pinn_weighted_samples/`: curriculum weighted-sample runs.
-- `logs/`: timestamped CLI logs for experiments that use CLI runners.
-
-A typical run directory contains:
-
-- `config.json`: experiment configuration and device summary.
-- `loss.dat`: training loss history.
-- `metrics.json`: evaluation metrics and PDE residual summaries.
-- `results.png`: visualization of prediction/reference fields where available.
-- DeepXDE model checkpoint files.
-
-Generated run artifacts are intentionally ignored by Git so that the repository remains lightweight.
-
----
-
-## Benchmarks included
-
-| Benchmark | Entry point | Notes |
-| --- | --- | --- |
-| 1D ODE | `python experiments/ode1d/ode1d.py` | Lightweight sanity-check case. |
-| High-frequency Poisson | `python experiments/poisson_high_fre/poisson_high_fre.py` | 2D benchmark with localized high-frequency structure. |
-| ADR | `python experiments/adr/adr_cli.py` | 2D advection-diffusion-reaction case with CLI hyperparameters. |
-| Lid-driven NS2D | `python experiments/ns2d/ns2d_cli.py` | 2D Navier-Stokes case with included reference data. |
-
----
-
-## Reproducing paper experiments
-
-The current defaults are intended to document the main experimental setup used during development. For final paper reproduction:
-
-1. Set `DDE_BACKEND=pytorch`.
-2. Fix random seeds through the experiment configuration.
-3. Run the desired benchmark entry point from the repository root.
-4. Archive the generated `config.json`, `metrics.json`, `loss.dat`, and result figures for each run.
-
-Additional plotting scripts and exact paper command presets may be added as the paper release is finalized. Compact result notes that were previously kept in source-code comments are now collected in `experiments/experiment_results.md`.
-
----
+This is a compact runnable implementation with example configurations. Full experiment batches, trained models, and publication figures are not included. See [implementation notes](docs/methods.md) and [third-party notices](docs/third_party.md).
 
 ## Citation
+
 
 If this repository is useful for your research, please cite the accompanying paper once it is available.
 

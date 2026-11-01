@@ -1,5 +1,7 @@
-deepxde
-matplotlib
-numpy
-scipy
-torch
+deepxde==1.12.2
+numpy==1.25.1
+scipy==1.11.1
+matplotlib==3.7.2
+scikit-learn==1.3.0
+scikit-optimize==0.9.0
+torch==2.8.0

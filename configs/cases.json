@@ -1,0 +1,244 @@
+{
+  "ode_low": {
+    "adam_iterations": 10000,
+    "domain": [
+      0.0,
+      1.0
+    ],
+    "lbfgs_iterations": 0,
+    "learning_rate": 0.001,
+    "loss_weights": [
+      1,
+      100,
+      100
+    ],
+    "net_depth": 6,
+    "net_width": 100,
+    "num_boundary": 2,
+    "num_domain": 250,
+    "num_test": 1000,
+    "reweight_config": {
+      "decay_epsi": 1.0,
+      "frame_data_weight": 0.0,
+      "low_fre_data_weight": 0.0,
+      "low_fre_n": 2,
+      "num_subdomains": 5,
+      "record_every": 1000,
+      "reweight_adaptive_begin": 100000,
+      "reweight_adaptive_end": 100000,
+      "reweight_causal_begin": 1000,
+      "reweight_causal_end": 5000,
+      "reweight_every": 1000,
+      "causal_end_inclusive": false
+    },
+    "seed": 0,
+    "train_distribution": "uniform"
+  },
+  "ode_high": {
+    "adam_iterations": 10000,
+    "domain": [
+      0.0,
+      1.0
+    ],
+    "lbfgs_iterations": 6000,
+    "learning_rate": 0.001,
+    "loss_weights": [
+      1,
+      1000,
+      1000
+    ],
+    "net_depth": 6,
+    "net_width": 100,
+    "num_boundary": 2,
+    "num_domain": 1000,
+    "num_test": 1000,
+    "reweight_config": {
+      "decay_epsi": 1.0,
+      "frame_data_weight": 0.0,
+      "low_fre_data_weight": 10.0,
+      "low_fre_n": 2,
+      "num_subdomains": 5,
+      "record_every": 1000,
+      "reweight_adaptive_begin": 100000,
+      "reweight_adaptive_end": 100000,
+      "reweight_causal_begin": 1000,
+      "reweight_causal_end": 8000,
+      "reweight_every": 1000,
+      "causal_end_inclusive": true
+    },
+    "seed": 0,
+    "train_distribution": "uniform"
+  },
+  "poisson": {
+    "activation": "tanh",
+    "adam_iterations": 5000,
+    "amplitudes": [
+      5,
+      5,
+      5,
+      5
+    ],
+    "bbox": [
+      0.0,
+      1.0,
+      0.0,
+      1.0
+    ],
+    "centers": [
+      [
+        0.3,
+        0.3
+      ],
+      [
+        0.7,
+        0.35
+      ],
+      [
+        0.55,
+        0.75
+      ],
+      [
+        0.8,
+        0.8
+      ]
+    ],
+    "data_file": "",
+    "grid_resolution": 250,
+    "initializer": "Glorot normal",
+    "k": 14,
+    "lbfgs_iterations": 15000,
+    "learning_rate": 0.001,
+    "loss_weights": [
+      1.0,
+      10000.0
+    ],
+    "net_depth": 6,
+    "net_width": 50,
+    "num_boundary": 400,
+    "num_domain": 10000,
+    "reweight_config": {
+      "decay_epsi": 1.0,
+      "frame_data_weight": 0.0,
+      "grad_norms_scale": 0.5,
+      "log": true,
+      "low_fre_data_weight": 10.0,
+      "low_fre_n": 2,
+      "num_subdomains": [
+        5,
+        5
+      ],
+      "reweight_adaptive_begin": 10000,
+      "reweight_adaptive_end": 15000,
+      "reweight_causal_begin": 1000,
+      "reweight_causal_end": 9000,
+      "reweight_every": 1000,
+      "scale": 3,
+      "causal_end_inclusive": false,
+      "cache_static_rhs": true
+    },
+    "seed": 0,
+    "sigma": 0.1,
+    "train_distribution": "uniform"
+  },
+  "adr": {
+    "activation": "tanh",
+    "adam_iterations": 5000,
+    "bbox": [
+      0.0,
+      1.0,
+      0.0,
+      1.0
+    ],
+    "beta": 100.0,
+    "cmax": 10000.0,
+    "cmin": 1.0,
+    "data_file": "",
+    "delta": 0.35,
+    "grid_resolution": 250,
+    "initializer": "Glorot normal",
+    "k": 8,
+    "lbfgs_iterations": 5000,
+    "learning_rate": 0.0005,
+    "loss_weights": [
+      1.0,
+      10000.0
+    ],
+    "net_depth": 5,
+    "net_width": 50,
+    "nu": 0.0001,
+    "num_boundary": 400,
+    "num_domain": 10000,
+    "num_test": 10000,
+    "reweight_config": {
+      "decay_epsi": 0.5,
+      "frame_data_weight": 0.0,
+      "grad_norms_scale": 2.0,
+      "log": true,
+      "low_fre_data_weight": 10.0,
+      "low_fre_n": 2,
+      "num_subdomains": [
+        5,
+        5
+      ],
+      "reweight_adaptive_begin": 5000,
+      "reweight_adaptive_end": 8000,
+      "reweight_causal_begin": 1000,
+      "reweight_causal_end": 5000,
+      "reweight_every": 500,
+      "scale": 3.0,
+      "causal_end_inclusive": false
+    },
+    "seed": 0,
+    "sig_c": 0.1,
+    "sig_u": 0.12,
+    "train_distribution": "uniform",
+    "x0": 0.6,
+    "xc": 0.65,
+    "y0": 0.4,
+    "yc": 0.35
+  },
+  "ns": {
+    "adam_iterations": 5000,
+    "data_file": "experiments/ns2d/data/lid_driven_a8.dat",
+    "grid_resolution": 120,
+    "lbfgs_iterations": 3000,
+    "learning_rate": 0.001,
+    "lid_coefficient": 8,
+    "loss_weights": [
+      1.0,
+      1.0,
+      1.0,
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      100.0
+    ],
+    "net_depth": 6,
+    "net_width": 60,
+    "num_boundary": 400,
+    "num_domain": 2500,
+    "reweight_config": {
+      "decay_epsi": 1.0,
+      "frame_data_weight": 0.0,
+      "grad_norms_scale": 0.5,
+      "log": true,
+      "low_fre_data_weight": 10.0,
+      "low_fre_n": 3,
+      "num_subdomains": [
+        5,
+        5
+      ],
+      "reweight_adaptive_begin": 6000,
+      "reweight_adaptive_end": 8000,
+      "reweight_causal_begin": 1000,
+      "reweight_causal_end": 3000,
+      "reweight_every": 500,
+      "scale": 3.0,
+      "causal_end_inclusive": false
+    },
+    "reynolds": 100.0,
+    "seed": 0,
+    "train_distribution": "uniform"
+  }
+}

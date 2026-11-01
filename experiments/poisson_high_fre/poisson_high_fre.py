@@ -1,5 +1,3 @@
-"""High-frequency Poisson benchmark experiment. / 高频Poisson方程基准实验。"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -16,7 +14,6 @@ from datetime import datetime
 
 from experiments.utils import *
 import pinn_pro
-
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -39,7 +36,7 @@ class Poisson2dHFConfig:
     num_boundary: int = 400
 
     learning_rate: float = 1e-3
-    opt_decay = ['step', 1000, 0.9]
+    opt_decay = ["step", 1000, 0.9]
     adam_iterations: int = 5000
     lbfgs_iterations: int = 15000
     net_width: int = 50
@@ -53,21 +50,23 @@ class Poisson2dHFConfig:
 
     seed: int = 0
 
-    reweight_config: dict = field(default_factory=lambda:{
-        "decay_epsi": 1.0, # 1.0
-        "num_subdomains": [5,5],
-        "reweight_every": 1000,
-        "reweight_causal_begin": 100000,
-        "reweight_causal_end": 100000,
-        "reweight_adaptive_begin": 100000,
-        "reweight_adaptive_end": 100000,
-        "log": True,
-        "scale": 3,
-        "grad_norms_scale": 0.5,
-        "low_fre_n": 2,
-        "low_fre_data_weight": 10.0,
-        "frame_data_weight": 0.0,
-    })
+    reweight_config: dict = field(
+        default_factory=lambda: {
+            "decay_epsi": 1.0,  # 1.0
+            "num_subdomains": [5, 5],
+            "reweight_every": 1000,
+            "reweight_causal_begin": 100000,
+            "reweight_causal_end": 100000,
+            "reweight_adaptive_begin": 100000,
+            "reweight_adaptive_end": 100000,
+            "log": True,
+            "scale": 3,
+            "grad_norms_scale": 0.5,
+            "low_fre_n": 2,
+            "low_fre_data_weight": 10.0,
+            "frame_data_weight": 0.0,
+        }
+    )
 
 
 class Poisson2dHF:
@@ -99,7 +98,7 @@ class Poisson2dHF:
         up = np.zeros_like(x)
         lap_up = np.zeros_like(x)
 
-        s2 = self.config.sigma ** 2
+        s2 = self.config.sigma**2
         invs2 = 1.0 / s2
 
         sinx = np.sin(self.config.k * np.pi * x)
@@ -121,17 +120,12 @@ class Poisson2dHF:
 
             Gx = G * (-2.0 * dx * invs2)
             Gy = G * (-2.0 * dy * invs2)
-            Gxx = G * ((4.0 * dx * dx * (invs2 ** 2)) - 2.0 * invs2)
-            Gyy = G * ((4.0 * dy * dy * (invs2 ** 2)) - 2.0 * invs2)
+            Gxx = G * ((4.0 * dx * dx * (invs2**2)) - 2.0 * invs2)
+            Gyy = G * ((4.0 * dy * dy * (invs2**2)) - 2.0 * invs2)
 
             U = amp * G * S
             lapU = amp * (
-                Gxx * S
-                + 2.0 * Gx * Sx
-                + G * Sxx
-                + Gyy * S
-                + 2.0 * Gy * Sy
-                + G * Syy
+                Gxx * S + 2.0 * Gx * Sx + G * Sxx + Gyy * S + 2.0 * Gy * Sy + G * Syy
             )
 
             up += U
@@ -142,11 +136,13 @@ class Poisson2dHF:
     def _u0(self, x: np.ndarray, y: np.ndarray):
         return np.sin(np.pi * x) * np.sin(np.pi * y)
 
-
     def _lap_u0(self, x: np.ndarray, y: np.ndarray):
-        return -2.0 * (np.pi ** 2) * self._u0(x, y)
+        return -2.0 * (np.pi**2) * self._u0(x, y)
 
     def forcing_rhs(self, points):
+        cached = getattr(points, "_poisson_static_rhs", None)
+        if cached is not None:
+            return cached
         if isinstance(points, np.ndarray):
             x = points[:, 0:1]
             y = points[:, 1:2]
@@ -171,11 +167,14 @@ class Poisson2dHF:
 
             points_np = points.detach().cpu().numpy()
             values_np = exact_solution(points_np)
-            tensor = dde.backend.as_tensor(values_np, dtype=getattr(points, "dtype", None))
+            tensor = dde.backend.as_tensor(
+                values_np, dtype=getattr(points, "dtype", None)
+            )
             point_device = getattr(points, "device", None)
             if point_device is not None and hasattr(tensor, "to"):
                 tensor = tensor.to(point_device)
             return tensor
+
         return exact_solution
 
     def build_pde(self):
@@ -228,7 +227,7 @@ class Poisson2dHF:
 
     def make_dataset_function(self, geom, reference_fn, config):
         num_train = config.num_domain + config.num_boundary
-        num_test = config.eval_resolution ** 2
+        num_test = config.eval_resolution**2
         data = dde.data.Function(
             geom,
             reference_fn,
@@ -239,12 +238,13 @@ class Poisson2dHF:
         enforce_dataset_dtype(data, ddeconfig.real(np))
         return data
 
-
     def make_network(self, config):
         layer_sizes = [2] + [config.net_width] * config.net_depth + [1]
         return dde.nn.FNN(layer_sizes, config.activation, config.initializer)
 
-    def component_metrics(self, y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
+    def component_metrics(
+        self, y_true: np.ndarray, y_pred: np.ndarray
+    ) -> Dict[str, float]:
         metrics: Dict[str, float] = {}
         metrics["u_mse"] = float(dde.metrics.mean_squared_error(y_true, y_pred))
         metrics["u_l2_relative"] = float(dde.metrics.l2_relative_error(y_true, y_pred))
@@ -265,19 +265,36 @@ class Poisson2dHF:
 
         return coords, values_true
 
-
-    def plot_fields(self, coords, values_true, grid_x, grid_y, grid_pred, save_path: Path, loss_record: str = ""):
-        true_grid = griddata(coords, values_true.ravel(), (grid_x, grid_y), method="cubic")
+    def plot_fields(
+        self,
+        coords,
+        values_true,
+        grid_x,
+        grid_y,
+        grid_pred,
+        save_path: Path,
+        loss_record: str = "",
+    ):
+        true_grid = griddata(
+            coords, values_true.ravel(), (grid_x, grid_y), method="cubic"
+        )
         true_grid = np.nan_to_num(true_grid, nan=0.0)
         true_grid = true_grid.reshape(grid_x.shape)
         error_grid = np.abs(grid_pred - true_grid)
 
         fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-        extent = (self.config.bbox[0], self.config.bbox[1], self.config.bbox[2], self.config.bbox[3])
+        extent = (
+            self.config.bbox[0],
+            self.config.bbox[1],
+            self.config.bbox[2],
+            self.config.bbox[3],
+        )
         titles = ["Predicted", "Reference", "|delta u|"]
         fields = [grid_pred, true_grid, error_grid]
         for ax, title, field in zip(axes, titles, fields):
-            im = ax.imshow(field, cmap="viridis", extent=extent, origin="lower", aspect="auto")
+            im = ax.imshow(
+                field, cmap="viridis", extent=extent, origin="lower", aspect="auto"
+            )
             ax.set_title(title)
             ax.set_xlabel("x")
             ax.set_ylabel("y")
@@ -288,7 +305,9 @@ class Poisson2dHF:
         print(f"Saved field plots to {save_path}")
         plt.close(fig)
 
-    def plot_pde_loss_grad(self, loss_weight_list, loss_list, grad_list, save_path: Path):
+    def plot_pde_loss_grad(
+        self, loss_weight_list, loss_list, grad_list, save_path: Path
+    ):
         save_path.parent.mkdir(parents=True, exist_ok=True)
         n_x, n_y = self.config.reweight_config["num_subdomains"]
         weight_arr = np.asarray(loss_weight_list, dtype=float).reshape(n_x, n_y)
@@ -308,7 +327,15 @@ class Poisson2dHF:
             ax.set_title(title)
             for i in range(n_x):
                 for j in range(n_y):
-                    ax.text(i, j, format(data[i, j], fmt), ha="center", va="center", fontsize=6, color="k")
+                    ax.text(
+                        i,
+                        j,
+                        format(data[i, j], fmt),
+                        ha="center",
+                        va="center",
+                        fontsize=6,
+                        color="k",
+                    )
             fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
         plot_grid(axes[0], weight_arr, "Loss weight per subdomain", "Greens", fmt=".2f")
@@ -319,32 +346,3 @@ class Poisson2dHF:
         fig.savefig(save_path)
         plt.close(fig)
         plt.close(fig)
-
-
-
-if __name__ == "__main__":
-    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-    torch.cuda.set_device(device)
-
-    num_runs = 3
-    base_seed = 0
-    seeds = [base_seed + i for i in range(num_runs)]
-
-    batch_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_root = BASE_DIR / f"multi_runs" / f"batch_{batch_tag}"
-    run_root.mkdir(parents=True, exist_ok=True)
-
-    for run_idx, seed in enumerate(seeds):
-        if seed is None:
-            continue
-        config = Poisson2dHFConfig()
-        config.seed = int(seed)
-        poi_model = Poisson2dHF(config)
-        run_base_dir = run_root / f"run_{run_idx:02d}_seed_{config.seed}"
-        run_base_dir.mkdir(parents=True, exist_ok=True)
-
-        pinn_space_weight = pinn_pro.PINNWeightedSamples(poi_model, run_base_dir)
-        pinn_space_weight.train_and_evaluate()
-
-    summarize_batch(run_root)

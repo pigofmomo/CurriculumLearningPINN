@@ -1,11 +1,10 @@
-"""Weighted-sample DeepXDE/PyTorch model implementation. / 基于加权采样的DeepXDE/PyTorch模型实现。"""
-
 import deepxde as dde
 import torch
 from collections import OrderedDict
 import pickle
 import numpy as np
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from deepxde import config
@@ -18,6 +17,68 @@ from deepxde.callbacks import CallbackList
 from deepxde import utils
 from deepxde import backend as bkd
 import experiments.utils as exp_utils
+
+
+def bridge_data_loss(
+    outputs_data,
+    outputs_data_true,
+    data_loss_weight,
+    sample_weights=None,
+    mode="legacy",
+    loss_fn=None,
+):
+    """Compute the information-bridge loss without changing the legacy default.
+
+    ``legacy`` reproduces the archived implementation exactly: the global
+    coefficient scales both tensors before MSE and multiplies the resulting
+    loss once more (an effective cubic coefficient for MSE).
+
+    ``corrected`` implements lambda * mean(q_i * squared_error_i), where q_i
+    is the stored per-anchor weight.  The global coefficient is applied once.
+    When a non-bridge auxiliary dataset has no per-sample weights, q_i=1.
+    """
+    if mode == "legacy":
+        if loss_fn is None:
+            raise ValueError("loss_fn is required for legacy bridge loss")
+        weight_tensor = torch.as_tensor(
+            data_loss_weight,
+            dtype=outputs_data.dtype,
+            device=outputs_data.device,
+        )
+        loss_data = loss_fn(
+            outputs_data * weight_tensor,
+            outputs_data_true * weight_tensor,
+        )
+        return weight_tensor * loss_data
+
+    if mode == "corrected":
+        if sample_weights is None:
+            sample_weights = torch.ones_like(outputs_data)
+        sample_weight_tensor = torch.as_tensor(
+            sample_weights,
+            dtype=outputs_data.dtype,
+            device=outputs_data.device,
+        )
+        if sample_weight_tensor.shape != outputs_data.shape:
+            try:
+                sample_weight_tensor = torch.broadcast_to(
+                    sample_weight_tensor, outputs_data.shape
+                )
+            except RuntimeError as exc:
+                raise ValueError(
+                    "per-anchor bridge weights are not broadcastable to predictions: "
+                    f"{tuple(sample_weight_tensor.shape)} vs {tuple(outputs_data.shape)}"
+                ) from exc
+        global_weight = torch.as_tensor(
+            data_loss_weight,
+            dtype=outputs_data.dtype,
+            device=outputs_data.device,
+        )
+        squared_error = torch.square(outputs_data - outputs_data_true)
+        return global_weight * torch.mean(sample_weight_tensor * squared_error)
+
+    raise ValueError(f"Unknown bridge_loss_mode: {mode!r}")
+
 
 class ModelWeightedSamples:
     def __init__(self, data, net, pinn_pro=None):
@@ -40,7 +101,6 @@ class ModelWeightedSamples:
         self.loss_fn = None
         self.pinn_pro = pinn_pro
 
-        # Low-frequency bridge order. / 低频桥接项的阶数。
         self.low_fre_n = self.data.reweight_config.get("low_fre_n", 2)
 
         self.data_loss_weight = None
@@ -53,7 +113,7 @@ class ModelWeightedSamples:
         loss="MSE",
         metrics=None,
         decay=None,
-        loss_weights=None
+        loss_weights=None,
     ):
         self.opt_name = optimizer
         loss_fn = losses_module.get(loss)
@@ -63,8 +123,26 @@ class ModelWeightedSamples:
         metrics = metrics or []
         self.metrics = [metrics_module.get(m) for m in metrics]
 
+    def _static_coordinate_tensor(self, x):
+        # Exact host bytes are the cache key: changed coordinates cannot reuse a
+        # stale RHS. Fresh autograd leaves preserve the original input semantics.
+        if not self.data.reweight_config.get("cache_static_rhs", False):
+            return torch.as_tensor(x).requires_grad_()
+        a = np.asarray(x)
+        key = (a.shape, a.dtype.str, a.tobytes())
+        if not hasattr(self, "_static_coordinate_cache"):
+            self._static_coordinate_cache = {}
+        cached = self._static_coordinate_cache.get(key)
+        if cached is None:
+            coordinates = torch.as_tensor(x)
+            rhs = self.pinn_pro.PDE.forcing_rhs(coordinates).detach()
+            cached = (coordinates.detach(), rhs)
+            self._static_coordinate_cache[key] = cached
+        inputs = torch.as_tensor(x).requires_grad_()
+        inputs._poisson_static_rhs = cached[1]
+        return inputs
+
     def _compile_pytorch(self, lr, loss_fn, decay):
-        # Prediction path without loss computation. / 预测路径，不计算损失。
         def outputs(training, inputs):
             self.net.train(mode=training)
             with torch.no_grad():
@@ -75,19 +153,16 @@ class ModelWeightedSamples:
                 else:
                     inputs = torch.as_tensor(inputs)
                     inputs.requires_grad_()
-            # Clear cached Jacobians and Hessians. / 清理缓存的Jacobian和Hessian。
             grad.clear()
             return self.net(inputs)
 
-        # Forward pass and loss computation. / 前向传播并计算损失。
         def outputs_losses(training, x_col_group, x_bc, x_data, y_data, losses_fn):
             self.net.train(mode=training)
 
-            # Convert sampled arrays to tensors. / 将采样点转为张量。
             inputs_col_group = tuple(
-                torch.as_tensor(x).requires_grad_() for x in x_col_group
+                self._static_coordinate_tensor(x) for x in x_col_group
             )
-            inputs_bcs = tuple(torch.as_tensor(x).requires_grad_() for x in x_bc)
+            inputs_bcs = tuple(self._static_coordinate_tensor(x) for x in x_bc)
 
             outputs_col_group = tuple(self.net(inputs) for inputs in inputs_col_group)
             outputs_bcs = tuple(self.net(inputs) for inputs in inputs_bcs)
@@ -99,23 +174,38 @@ class ModelWeightedSamples:
                 if self.data_loss_weight is None:
                     loss_data = loss_fn(outputs_data, outputs_data_true)
                 else:
-                    data_loss_weight_tensor = torch.as_tensor(self.data_loss_weight)
-                    outputs_data = outputs_data * data_loss_weight_tensor
-                    outputs_data_true = outputs_data_true * data_loss_weight_tensor
-                    loss_data = loss_fn(outputs_data, outputs_data_true)
-                loss_data = self.data_loss_weight * loss_data
+                    bridge_loss_mode = self.data.reweight_config.get(
+                        "bridge_loss_mode", "legacy"
+                    )
+                    sample_weights = (
+                        self.train_state.weights_train_data
+                        if bridge_loss_mode == "corrected"
+                        else None
+                    )
+                    loss_data = bridge_data_loss(
+                        outputs_data,
+                        outputs_data_true,
+                        self.data_loss_weight,
+                        sample_weights=sample_weights,
+                        mode=bridge_loss_mode,
+                        loss_fn=loss_fn,
+                    )
                 loss_data = loss_data.unsqueeze(0)
             else:
                 loss_data = torch.tensor([0.0])
 
-            # Delegate PDE residual losses to the data object. / PDE残差损失由data对象计算。
-            losses, f_partition = losses_fn(inputs_col_group, outputs_col_group,
-                                            inputs_bcs, outputs_bcs, loss_fn, mul_pde_weights=training)
+            losses, f_partition = losses_fn(
+                inputs_col_group,
+                outputs_col_group,
+                inputs_bcs,
+                outputs_bcs,
+                loss_fn,
+                mul_pde_weights=training,
+            )
             self.f_partition = f_partition
             if not isinstance(losses, list):
                 losses = [losses]
             losses = torch.stack(losses)
-            # Apply user-provided loss weights. / 应用用户配置的损失权重。
             if self.loss_weights is not None:
                 losses *= torch.as_tensor(self.loss_weights)
 
@@ -123,7 +213,6 @@ class ModelWeightedSamples:
 
             grad.clear()
             return losses
-
 
         def outputs_losses_train(x_col_group, x_bc, x_data, y_data):
             return outputs_losses(
@@ -136,7 +225,6 @@ class ModelWeightedSamples:
             )
 
         trainable_variables = list(self.net.parameters())
-
 
         self.opt, self.lr_scheduler = optimizers.get(
             trainable_variables, self.opt_name, learning_rate=lr, decay=decay
@@ -154,13 +242,11 @@ class ModelWeightedSamples:
             if self.lr_scheduler is not None:
                 self.lr_scheduler.step()
 
-        # Register train/predict callables. / 注册训练与预测调用函数。
         self.outputs = outputs
         self.outputs_losses_train = outputs_losses_train
         self.outputs_losses_test = outputs_losses_test
         self.train_step = train_step
 
-    # NumPy-facing helper interfaces. / 面向NumPy的辅助接口。
     def _outputs(self, training, inputs):
         outs = self.outputs(training, inputs)
         return utils.to_numpy(outs)
@@ -187,7 +273,7 @@ class ModelWeightedSamples:
         iterations=None,
         display_every=1000,
         model_restore_path=None,
-        model_save_path=None
+        model_save_path=None,
     ):
         if model_restore_path is not None:
             self.restore(model_restore_path, verbose=1)
@@ -197,7 +283,6 @@ class ModelWeightedSamples:
         if self.train_state.step == 0:
             self.data.init_data(savepath=self.pinn_pro.run_dir)
 
-        # Training batch groups: collocation, boundary, and optional data anchors. / 训练批次包含配点、边界点和可选数据锚点。
         self.train_state.x_train_col = self.data.train_x_col
         self.train_state.x_train_group = self.data.train_x_group
         self.train_state.x_train_bc = self.data.train_x_bc
@@ -216,34 +301,42 @@ class ModelWeightedSamples:
         return self.losshistory, self.train_state
 
     def get_low_fre_anchor_values(self):
-        # Interior anchors are stored as a list by subdomain. / 内部锚点按子域存为列表。
         x_anchors_np = self.data.geometry_partitions.inside_anchors
         y_anchors = [None for _ in range(len(x_anchors_np))]
         weights = [None for _ in range(len(x_anchors_np))]
         for i in range(len(x_anchors_np)):
             x_anchors_tenser = torch.as_tensor(x_anchors_np[i])
             y_anchors[i] = self.net(x_anchors_tenser).detach().cpu().numpy()
-            weights[i] = self.data.pde_loss_weights[i]**2 * np.ones((y_anchors[i].shape[0], 1))
+            weights[i] = self.data.pde_loss_weights[i] ** 2 * np.ones(
+                (y_anchors[i].shape[0], 1)
+            )
 
         x_anchors_all = np.vstack(x_anchors_np)
         y_anchors_all = np.vstack(y_anchors)
         weights_all = np.vstack(weights)
-        coef, powers = exp_utils.weighted_polyfit_nd(x_anchors_all, y_anchors_all, deg=self.low_fre_n, w=weights_all)
+        coef, powers = exp_utils.weighted_polyfit_nd(
+            x_anchors_all, y_anchors_all, deg=self.low_fre_n, w=weights_all
+        )
         y_low = exp_utils.polyval_nd(x_anchors_all, coef, powers)
 
         exp_utils.visualize_polyfit_nd(
-            x_anchors_all, y_anchors_all, coef, powers,
-            out_path=self.pinn_pro.run_dir / f"anchors_polyfit_step_{self.train_state.step}.png"
+            x_anchors_all,
+            y_anchors_all,
+            coef,
+            powers,
+            out_path=self.pinn_pro.run_dir
+            / f"anchors_polyfit_step_{self.train_state.step}.png",
         )
 
         self.train_state.x_train_data = x_anchors_all
         self.train_state.y_train_data = y_low
-        self.train_state.weights_train_data = np.exp(-self.data.decay_epsi * weights_all)
+        self.train_state.weights_train_data = np.exp(
+            -self.data.decay_epsi * weights_all
+        )
         print("Low-fre anchors values updated.")
         pass
 
     def get_frame_anchor_values(self):
-        # Frame points are stored as one NumPy array. / 框架点存为一个NumPy数组。
         x_anchors_np = self.data.geometry_partitions.frame_points
         x_anchors_tenser = torch.as_tensor(x_anchors_np)
         y_anchors = self.net(x_anchors_tenser).detach().cpu().numpy()
@@ -253,18 +346,28 @@ class ModelWeightedSamples:
         print("Frame anchors values updated.")
 
     def reset_reweight_and_anchors(self):
-        self.data.pde_loss_weights = [1 for _ in range(len(self.data.geometry_partitions.distance_to_boundary))]
+        self.data.pde_loss_weights = [
+            1 for _ in range(len(self.data.geometry_partitions.distance_to_boundary))
+        ]
         self.train_state.x_train_data = None
         self.train_state.y_train_data = None
         self.train_state.weights_train_data = None
-        print("Reset PDE loss weights reset to 1 for each part and anchors reset to None.")
+        print(
+            "Reset PDE loss weights reset to 1 for each part and anchors reset to None."
+        )
 
     def _train_sgd(self, iterations, display_every):
         reweight_every = self.data.reweight_config.get("reweight_every", 1000)
-        reweight_causal_begin = self.data.reweight_config.get("reweight_causal_begin", 1000)
+        reweight_causal_begin = self.data.reweight_config.get(
+            "reweight_causal_begin", 1000
+        )
         reweight_causal_end = self.data.reweight_config.get("reweight_causal_end", 1000)
-        reweight_adaptive_begin = self.data.reweight_config.get("reweight_adaptive_begin", 100000)
-        reweight_adaptive_end = self.data.reweight_config.get("reweight_adaptive_end", 100000)
+        reweight_adaptive_begin = self.data.reweight_config.get(
+            "reweight_adaptive_begin", 100000
+        )
+        reweight_adaptive_end = self.data.reweight_config.get(
+            "reweight_adaptive_end", 100000
+        )
 
         for i in range(iterations):
             self._train_step(
@@ -282,23 +385,67 @@ class ModelWeightedSamples:
             if self.train_state.step % reweight_every == 0:
                 self.record_and_plot()
 
-                if self.train_state.step >= reweight_causal_begin and self.train_state.step < reweight_causal_end:
-                    self.data_loss_weight = self.data.reweight_config.get("low_fre_data_weight", 0)
-                    pde_loss_list = utils.to_numpy(self.pde_loss_for_each_part()[0])
-                    self.data.pde_loss_weights = self.data.calculate_pde_weights_causal(pde_loss_list)
-                    print(f"Step {self.train_state.step}: updated causal PDE loss weights for each part: {self.data.pde_loss_weights}")
+                if (
+                    self.train_state.step >= reweight_causal_begin
+                    and self.train_state.step
+                    < reweight_causal_end
+                    + int(self.data.reweight_config.get("causal_end_inclusive", False))
+                ):
+                    self.data_loss_weight = self.data.reweight_config.get(
+                        "low_fre_data_weight", 0
+                    )
+                    causal_mode = self.data.reweight_config.get("causal_mode", "soft")
+                    if causal_mode == "hard":
+                        weights, unlocked, total = self.data.calculate_pde_weights_hard(
+                            self.train_state.step,
+                            reweight_causal_begin,
+                            reweight_causal_end,
+                            reweight_every,
+                        )
+                        print(
+                            f"Step {self.train_state.step}: updated hard causal mask "
+                            f"({unlocked}/{total} layers unlocked): {weights}"
+                        )
+                    elif causal_mode == "soft":
+                        pde_loss_list = utils.to_numpy(self.pde_loss_for_each_part()[0])
+                        self.data.pde_loss_weights = (
+                            self.data.calculate_pde_weights_causal(pde_loss_list)
+                        )
+                        print(
+                            f"Step {self.train_state.step}: updated causal PDE loss weights for each part: {self.data.pde_loss_weights}"
+                        )
+                    else:
+                        raise ValueError(f"Unknown causal_mode: {causal_mode!r}")
                     self.get_low_fre_anchor_values()
-                elif self.train_state.step >= reweight_causal_end and self.train_state.step < reweight_adaptive_begin:
+                elif (
+                    self.train_state.step >= reweight_causal_end
+                    and self.train_state.step < reweight_adaptive_begin
+                ):
                     self.reset_reweight_and_anchors()
-                elif self.train_state.step >= reweight_adaptive_begin and self.train_state.step < reweight_adaptive_end:
-                    self.data_loss_weight = self.data.reweight_config.get("frame_data_weight", 0)
+                elif (
+                    self.train_state.step >= reweight_adaptive_begin
+                    and self.train_state.step < reweight_adaptive_end
+                ):
+                    self.data_loss_weight = self.data.reweight_config.get(
+                        "frame_data_weight", 0
+                    )
                     pde_loss_for_each_part = self.pde_loss_for_each_part()
                     pde_loss_list = utils.to_numpy(pde_loss_for_each_part[0])
                     grad_norms = pde_loss_for_each_part[1]
-                    self.data.pde_loss_weights = self.data.calculate_pde_weights_adaptive(pde_loss_list, log=self.data.reweight_config.get("log", False),
-                                                                                      scale=self.data.reweight_config.get("scale", 10),
-                                                                                      grad_norms=grad_norms, grad_norms_scale=self.data.reweight_config.get("grad_norms_scale", 0))
-                    print(f"Step {self.train_state.step}: updated adaptive PDE loss weights for each part: {self.data.pde_loss_weights}")
+                    self.data.pde_loss_weights = (
+                        self.data.calculate_pde_weights_adaptive(
+                            pde_loss_list,
+                            log=self.data.reweight_config.get("log", False),
+                            scale=self.data.reweight_config.get("scale", 10),
+                            grad_norms=grad_norms,
+                            grad_norms_scale=self.data.reweight_config.get(
+                                "grad_norms_scale", 0
+                            ),
+                        )
+                    )
+                    print(
+                        f"Step {self.train_state.step}: updated adaptive PDE loss weights for each part: {self.data.pde_loss_weights}"
+                    )
                     self.get_frame_anchor_values()
                 elif self.train_state.step >= reweight_adaptive_end:
                     self.reset_reweight_and_anchors()
@@ -308,10 +455,16 @@ class ModelWeightedSamples:
 
     def _train_pytorch_lbfgs(self, iterations, display_every=None):
         reweight_every = self.data.reweight_config.get("reweight_every", 1000)
-        reweight_causal_begin = self.data.reweight_config.get("reweight_causal_begin", 1000)
+        reweight_causal_begin = self.data.reweight_config.get(
+            "reweight_causal_begin", 1000
+        )
         reweight_causal_end = self.data.reweight_config.get("reweight_causal_end", 1000)
-        reweight_adaptive_begin = self.data.reweight_config.get("reweight_adaptive_begin", 100000)
-        reweight_adaptive_end = self.data.reweight_config.get("reweight_adaptive_end", 100000)
+        reweight_adaptive_begin = self.data.reweight_config.get(
+            "reweight_adaptive_begin", 100000
+        )
+        reweight_adaptive_end = self.data.reweight_config.get(
+            "reweight_adaptive_end", 100000
+        )
 
         prev_n_iter = 0
 
@@ -332,23 +485,65 @@ class ModelWeightedSamples:
 
             self.record_and_plot()
 
-            if self.train_state.step >= reweight_causal_begin and self.train_state.step < reweight_causal_end:
-                self.data_loss_weight = self.data.reweight_config.get("low_fre_data_weight", 0)
-                pde_loss_list = utils.to_numpy(self.pde_loss_for_each_part()[0])
-                self.data.pde_loss_weights = self.data.calculate_pde_weights_causal(pde_loss_list)
-                print(f"Step {self.train_state.step}: updated causal PDE loss weights for each part: {self.data.pde_loss_weights}")
+            if (
+                self.train_state.step >= reweight_causal_begin
+                and self.train_state.step
+                < reweight_causal_end
+                + int(self.data.reweight_config.get("causal_end_inclusive", False))
+            ):
+                self.data_loss_weight = self.data.reweight_config.get(
+                    "low_fre_data_weight", 0
+                )
+                causal_mode = self.data.reweight_config.get("causal_mode", "soft")
+                if causal_mode == "hard":
+                    weights, unlocked, total = self.data.calculate_pde_weights_hard(
+                        self.train_state.step,
+                        reweight_causal_begin,
+                        reweight_causal_end,
+                        reweight_every,
+                    )
+                    print(
+                        f"Step {self.train_state.step}: updated hard causal mask "
+                        f"({unlocked}/{total} layers unlocked): {weights}"
+                    )
+                elif causal_mode == "soft":
+                    pde_loss_list = utils.to_numpy(self.pde_loss_for_each_part()[0])
+                    self.data.pde_loss_weights = self.data.calculate_pde_weights_causal(
+                        pde_loss_list
+                    )
+                    print(
+                        f"Step {self.train_state.step}: updated causal PDE loss weights for each part: {self.data.pde_loss_weights}"
+                    )
+                else:
+                    raise ValueError(f"Unknown causal_mode: {causal_mode!r}")
                 self.get_low_fre_anchor_values()
-            elif self.train_state.step >= reweight_causal_end and self.train_state.step < reweight_adaptive_begin:
+            elif (
+                self.train_state.step >= reweight_causal_end
+                and self.train_state.step < reweight_adaptive_begin
+            ):
                 self.reset_reweight_and_anchors()
-            elif self.train_state.step >= reweight_adaptive_begin and self.train_state.step < reweight_adaptive_end:
-                self.data_loss_weight = self.data.reweight_config.get("frame_data_weight", 0)
+            elif (
+                self.train_state.step >= reweight_adaptive_begin
+                and self.train_state.step < reweight_adaptive_end
+            ):
+                self.data_loss_weight = self.data.reweight_config.get(
+                    "frame_data_weight", 0
+                )
                 pde_loss_for_each_part = self.pde_loss_for_each_part()
                 pde_loss_list = utils.to_numpy(pde_loss_for_each_part[0])
                 grad_norms = pde_loss_for_each_part[1]
-                self.data.pde_loss_weights = self.data.calculate_pde_weights_adaptive(pde_loss_list, log=self.data.reweight_config.get("log", False),
-                                                                                      scale=self.data.reweight_config.get("scale", 10),
-                                                                                      grad_norms=grad_norms, grad_norms_scale=self.data.reweight_config.get("grad_norms_scale", 0))
-                print(f"Step {self.train_state.step}: updated adaptive PDE loss weights for each part: {self.data.pde_loss_weights}")
+                self.data.pde_loss_weights = self.data.calculate_pde_weights_adaptive(
+                    pde_loss_list,
+                    log=self.data.reweight_config.get("log", False),
+                    scale=self.data.reweight_config.get("scale", 10),
+                    grad_norms=grad_norms,
+                    grad_norms_scale=self.data.reweight_config.get(
+                        "grad_norms_scale", 0
+                    ),
+                )
+                print(
+                    f"Step {self.train_state.step}: updated adaptive PDE loss weights for each part: {self.data.pde_loss_weights}"
+                )
                 self.get_frame_anchor_values()
             elif self.train_state.step >= reweight_adaptive_end:
                 self.reset_reweight_and_anchors()
@@ -357,15 +552,13 @@ class ModelWeightedSamples:
                 break
 
     def _test(self):
-
-        loss_all_np = \
-            self._outputs_losses(
-                False,
-                self.train_state.x_train_group,
-                self.train_state.x_train_bc,
-                self.train_state.x_train_data,
-                self.train_state.y_train_data,
-            )
+        loss_all_np = self._outputs_losses(
+            False,
+            self.train_state.x_train_group,
+            self.train_state.x_train_bc,
+            self.train_state.x_train_data,
+            self.train_state.y_train_data,
+        )
 
         self.train_state.loss_train = loss_all_np
         self.train_state.loss_test = loss_all_np
@@ -384,7 +577,6 @@ class ModelWeightedSamples:
             self.stop_training = True
 
         display.training_display(self.train_state)
-
 
     def predict(self, x, operator=None):
         if isinstance(x, tuple):
@@ -440,9 +632,11 @@ class ModelWeightedSamples:
         self.net.load_state_dict(checkpoint["model_state_dict"])
         self.opt.load_state_dict(checkpoint["optimizer_state_dict"])
 
-    # Reduce partitioned residuals to one PDE loss per subdomain. / 将分区残差汇总为每个子域的PDE损失。
     def pde_loss_for_each_part(self):
-        f_partition_mse = [[self.loss_fn(bkd.zeros_like(error), error) for error in parts] for parts in self.f_partition]
+        f_partition_mse = [
+            [self.loss_fn(bkd.zeros_like(error), error) for error in parts]
+            for parts in self.f_partition
+        ]
         pde_loss_list = [sum(part) for part in f_partition_mse]
         grads_norms = loss_magnitude(pde_loss_list, self.net)
         return pde_loss_list, grads_norms
@@ -451,16 +645,28 @@ class ModelWeightedSamples:
         self.pinn_pro.evaluate(step=self.train_state.step)
 
         losses = self.outputs_losses_train(
-            self.train_state.x_train_group, self.train_state.x_train_bc, self.train_state.x_train_data, self.train_state.y_train_data)
+            self.train_state.x_train_group,
+            self.train_state.x_train_bc,
+            self.train_state.x_train_data,
+            self.train_state.y_train_data,
+        )
 
         losses_for_each_term = loss_magnitude(losses, self.net)
-        print(f"Step {self.train_state.step}: losses grad for each term: {losses_for_each_term}")
+        print(
+            f"Step {self.train_state.step}: losses grad for each term: {losses_for_each_term}"
+        )
 
         pde_loss_list, grads_norms = self.pde_loss_for_each_part()
         pde_loss_weight = self.data.pde_loss_weights
-        self.pinn_pro.plot_pde_loss_grad(pde_loss_weight, utils.to_numpy(pde_loss_list), grads_norms, self.train_state.step)
+        self.pinn_pro.plot_pde_loss_grad(
+            pde_loss_weight,
+            utils.to_numpy(pde_loss_list),
+            grads_norms,
+            self.train_state.step,
+        )
 
         return pde_loss_list, grads_norms
+
 
 def loss_magnitude(losses, net):
     grad_norms = []
@@ -468,14 +674,14 @@ def loss_magnitude(losses, net):
         g = torch.autograd.grad(
             li,
             net.parameters(),
-            retain_graph=True,    # 逐项求梯度需要保留计算图
+            retain_graph=True,  # 逐项求梯度需要保留计算图
             allow_unused=True,
         )
-        # Aggregate parameter gradients with an L2 norm. / 用L2范数聚合各参数梯度。
         total = torch.sqrt(sum((gi.norm() ** 2 for gi in g if gi is not None)))
         grad_norms.append(total.item())
 
     return grad_norms
+
 
 class TrainState:
     def __init__(self):
@@ -495,6 +701,7 @@ class TrainState:
         self.loss_test = []
         self.metrics_test = []
 
+
 class LossHistory:
     def __init__(self):
         self.steps = []
@@ -511,4 +718,3 @@ class LossHistory:
             metrics_test = self.metrics_test[-1]
         self.loss_test.append(loss_test)
         self.metrics_test.append(metrics_test)
-

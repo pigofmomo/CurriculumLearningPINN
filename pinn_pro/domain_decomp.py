@@ -1,13 +1,14 @@
-"""Domain decomposition helpers for spatial curriculum weights. / 空间课程权重使用的区域划分工具。"""
-
 import numpy as np
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from itertools import combinations
+from sklearn.cluster import KMeans
 from deepxde.geometry import Interval, Rectangle
 import deepxde as dde
 
-# Split sampled points into subdomains and keep their hierarchy. / 将已采样点划分为多个子域并记录层次关系。
+
 class Pointset1D:
     def __init__(self, geom, num_subdomains):
         self.geom = geom
@@ -31,11 +32,24 @@ class Pointset1D:
             colors = plt.cm.tab10(np.linspace(0, 1, self.num_subdomains))
             if col_points is not None:
                 for i, pts in enumerate(col_points):
-                    ax.scatter(pts[:, 0], np.zeros_like(pts[:, 0]), s=1, color=colors[i], label=f"col part {i}")
+                    ax.scatter(
+                        pts[:, 0],
+                        np.zeros_like(pts[:, 0]),
+                        s=1,
+                        color=colors[i],
+                        label=f"col part {i}",
+                    )
             else:
                 for i, interval in enumerate(self.intervals):
                     pts = interval.uniform_points(20, boundary=True)
-                    ax.scatter(pts[:, 0], np.zeros_like(pts[:, 0]), marker="|", s=20, color=colors[i], label=f"part {i}")
+                    ax.scatter(
+                        pts[:, 0],
+                        np.zeros_like(pts[:, 0]),
+                        marker="|",
+                        s=20,
+                        color=colors[i],
+                        label=f"part {i}",
+                    )
             ax.set_yticks([])
             ax.set_xlabel("x (subdomain splits)")
             ax.set_title("Subdomain spans (1D)")
@@ -45,16 +59,29 @@ class Pointset1D:
             print(f"Saved subdomain splits plot to {out}\n")
             plt.close(fig)
 
-            # Color intervals by distance to the outer boundary. / 按到外边界的距离给区间着色。
             fig_fill, ax_fill = plt.subplots(figsize=(8, 1.2))
             unique_dist = sorted(set(self.distance_to_boundary))
             cmap = plt.cm.get_cmap("tab10", len(unique_dist))
             for i, interval in enumerate(self.intervals):
                 dist = self.distance_to_boundary[i]
                 color = cmap(unique_dist.index(dist))
-                ax_fill.fill_between([interval.l, interval.r], [0, 0], [1, 1], color=color, alpha=0.4, step="pre")
+                ax_fill.fill_between(
+                    [interval.l, interval.r],
+                    [0, 0],
+                    [1, 1],
+                    color=color,
+                    alpha=0.4,
+                    step="pre",
+                )
                 ax_fill.plot([interval.l, interval.r], [0, 0], color="k", linewidth=0.8)
-                ax_fill.text((interval.l + interval.r) / 2, 0.55, f"d={dist}", ha="center", va="center", fontsize=8)
+                ax_fill.text(
+                    (interval.l + interval.r) / 2,
+                    0.55,
+                    f"d={dist}",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                )
             ax_fill.set_yticks([])
             ax_fill.set_xlabel("x")
             ax_fill.set_xlim(edges[0], edges[-1])
@@ -64,7 +91,6 @@ class Pointset1D:
             fig_fill.savefig(out_fill)
             print(f"Saved distance-colored spans to {out_fill}")
             plt.close(fig_fill)
-
 
     def filter_points(self, points):
         grouped_points = [None] * len(self.intervals)
@@ -107,12 +133,14 @@ class Pointset1D:
 
 
 class Pointset2D:
-    def __init__(self, geom, num_subdomains: list[int,int]):
+    def __init__(self, geom, num_subdomains: list[int, int]):
         self.geom = geom
         self.num_subdomains = num_subdomains
         self.rectangles = None
         self.distance_to_boundary = None
-        self.split_points_num = [0 for _ in range(num_subdomains[0] * num_subdomains[1])]
+        self.split_points_num = [
+            0 for _ in range(num_subdomains[0] * num_subdomains[1])
+        ]
         self.frame_points = None
         self.inside_anchors = None
 
@@ -125,7 +153,9 @@ class Pointset2D:
         self.split_points_num = []
         for i in range(len(x_edges) - 1):
             for j in range(len(y_edges) - 1):
-                rect = Rectangle([x_edges[i], y_edges[j]], [x_edges[i + 1], y_edges[j + 1]])
+                rect = Rectangle(
+                    [x_edges[i], y_edges[j]], [x_edges[i + 1], y_edges[j + 1]]
+                )
                 rectangles.append(rect)
         self.rectangles = rectangles
         n_x, n_y = self.num_subdomains
@@ -143,11 +173,23 @@ class Pointset2D:
             color_order = np.random.default_rng(0).permutation(total_parts)
             if col_points is not None:
                 for i, pts in enumerate(col_points):
-                    ax.scatter(pts[:, 0], pts[:, 1], s=1, color=cmap_parts(color_order[i]), label=f"col part {i}")
+                    ax.scatter(
+                        pts[:, 0],
+                        pts[:, 1],
+                        s=1,
+                        color=cmap_parts(color_order[i]),
+                        label=f"col part {i}",
+                    )
             else:
                 for i, rect in enumerate(self.rectangles):
                     pts = rect.uniform_points(100, boundary=True)
-                    ax.scatter(pts[:, 0], pts[:, 1], s=1, color=cmap_parts(color_order[i]), label=f"part {i}")
+                    ax.scatter(
+                        pts[:, 0],
+                        pts[:, 1],
+                        s=1,
+                        color=cmap_parts(color_order[i]),
+                        label=f"part {i}",
+                    )
             ax.set_xlabel("x")
             ax.set_ylabel("y")
             ax.set_title("Subdomain spans (2D)")
@@ -156,7 +198,6 @@ class Pointset2D:
             print(f"Saved subdomain splits plot to {out}\n")
             plt.close(fig)
 
-            # Color rectangles by distance to the outer boundary. / 按到外边界的距离给矩形子域着色。
             fig_fill, ax_fill = plt.subplots(figsize=(5, 5))
             unique_dist = sorted(set(self.distance_to_boundary))
             cmap = plt.cm.get_cmap("tab20", len(unique_dist))
@@ -168,8 +209,17 @@ class Pointset2D:
                     color = cmap(unique_dist.index(dist))
                     x0, y0 = rect.xmin
                     x1, y1 = rect.xmax
-                    ax_fill.fill_between([x0, x1], y0, y1, color=color, alpha=0.4, step="post")
-                    ax_fill.text((x0 + x1) / 2, (y0 + y1) / 2, f"d={dist}", ha="center", va="center", fontsize=7)
+                    ax_fill.fill_between(
+                        [x0, x1], y0, y1, color=color, alpha=0.4, step="post"
+                    )
+                    ax_fill.text(
+                        (x0 + x1) / 2,
+                        (y0 + y1) / 2,
+                        f"d={dist}",
+                        ha="center",
+                        va="center",
+                        fontsize=7,
+                    )
                     idx += 1
             ax_fill.set_xlim(x_min, x_max)
             ax_fill.set_ylim(y_min, y_max)
@@ -180,7 +230,6 @@ class Pointset2D:
             fig_fill.savefig(out_fill)
             print(f"Saved distance-colored spans to {out_fill}\n")
             plt.close(fig_fill)
-
 
     def filter_points(self, points):
         grouped_points = [None] * len(self.rectangles)

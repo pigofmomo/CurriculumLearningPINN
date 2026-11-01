@@ -1,5 +1,3 @@
-"""Shared experiment utilities for metrics, references, plots, and summaries. / 实验指标、参考解、绘图与汇总工具。"""
-
 from __future__ import annotations
 
 import json
@@ -16,82 +14,83 @@ import re
 
 
 def device_summary() -> Dict[str, object]:
-	if not torch.cuda.is_available():
-		return {"cuda_available": False}
-	props = torch.cuda.get_device_properties(torch.cuda.current_device())
-	return {
-		"cuda_available": True,
-		"cuda_device_name": props.name,
-		"cuda_device_memory_gb": round(props.total_memory / (1024 ** 3), 2),
-	}
+    if not torch.cuda.is_available():
+        return {"cuda_available": False}
+    props = torch.cuda.get_device_properties(torch.cuda.current_device())
+    return {
+        "cuda_available": True,
+        "cuda_device_name": props.name,
+        "cuda_device_memory_gb": round(props.total_memory / (1024**3), 2),
+    }
 
 
 def save_loss_history(loss_history, path: Path) -> None:
-	print(f"Saving loss history to {path} ...")
-	num_rows = len(loss_history.steps)
-	data = np.hstack(
-		(
-			np.array(loss_history.steps, dtype=float)[:, None],
-			_pad_records(loss_history.loss_train, num_rows),
-			_pad_records(loss_history.loss_test, num_rows),
-			_pad_records(loss_history.metrics_test, num_rows),
-		)
-	)
-	np.savetxt(path, data, header="step, loss_train, loss_test, metrics_test")
+    print(f"Saving loss history to {path} ...")
+    num_rows = len(loss_history.steps)
+    data = np.hstack(
+        (
+            np.array(loss_history.steps, dtype=float)[:, None],
+            _pad_records(loss_history.loss_train, num_rows),
+            _pad_records(loss_history.loss_test, num_rows),
+            _pad_records(loss_history.metrics_test, num_rows),
+        )
+    )
+    np.savetxt(path, data, header="step, loss_train, loss_test, metrics_test")
 
 
 def save_config(path: Path, config_dict: Dict[str, Any]) -> None:
-	def _default(obj):
-		if isinstance(obj, np.generic):
-			return obj.item()
-		return str(obj)
+    def _default(obj):
+        if isinstance(obj, np.generic):
+            return obj.item()
+        return str(obj)
 
-	with path.open("w", encoding="utf-8") as fh:
-		json.dump(config_dict, fh, indent=2, sort_keys=True, default=_default)
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(config_dict, fh, indent=2, sort_keys=True, default=_default)
 
 
 def save_metrics(path: Path, metrics: Dict[str, float], step=None) -> None:
-	# Append {step: metrics} when step is provided; otherwise write metrics directly. / 若提供step则追加{step: metrics}，否则直接写入metrics。
-	if step is None:
-		with path.open("w", encoding="utf-8") as fh:
-			json.dump(metrics, fh, indent=2, sort_keys=True)
-		return
+    if step is None:
+        with path.open("w", encoding="utf-8") as fh:
+            json.dump(metrics, fh, indent=2, sort_keys=True)
+        return
 
-	data: Dict[str, Any] = {}
-	if path.exists():
-		try:
-			with path.open("r", encoding="utf-8") as fh:
-				loaded = json.load(fh)
-			if isinstance(loaded, dict):
-				data.update(loaded)
-		except Exception:
-			# Overwrite invalid or corrupted metric files. / 旧指标文件损坏或格式不符时直接覆盖。
-			data = {}
+    data: Dict[str, Any] = {}
+    if path.exists():
+        try:
+            with path.open("r", encoding="utf-8") as fh:
+                loaded = json.load(fh)
+            if isinstance(loaded, dict):
+                data.update(loaded)
+        except Exception:
+            data = {}
 
-	data[str(step)] = metrics
-	with path.open("w", encoding="utf-8") as fh:
-		json.dump(data, fh, indent=2, sort_keys=True)
+    data[str(step)] = metrics
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2, sort_keys=True)
 
 
 def max_absolute_error(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-	return float(np.max(np.abs(y_true - y_pred)))
+    return float(np.max(np.abs(y_true - y_pred)))
 
 
 def _pad_records(records: Iterable, num_rows: int):
-	if records is None or len(records) == 0:
-		return np.empty((num_rows, 0))
+    if records is None or len(records) == 0:
+        return np.empty((num_rows, 0))
 
-	arrays = [np.atleast_1d(np.asarray(rec, dtype=float).reshape(-1)) for rec in records]
-	width = max(arr.size for arr in arrays)
-	padded = np.full((len(arrays), width), np.nan)
-	for idx, arr in enumerate(arrays):
-		padded[idx, : arr.size] = arr
-	return padded
+    arrays = [
+        np.atleast_1d(np.asarray(rec, dtype=float).reshape(-1)) for rec in records
+    ]
+    width = max(arr.size for arr in arrays)
+    padded = np.full((len(arrays), width), np.nan)
+    for idx, arr in enumerate(arrays):
+        padded[idx, : arr.size] = arr
+    return padded
+
 
 def ensure_run_root(RUN_ROOT: Path) -> None:
-	if RUN_ROOT.exists():
-		shutil.rmtree(RUN_ROOT)
-	RUN_ROOT.mkdir(parents=True, exist_ok=True)
+    if RUN_ROOT.exists():
+        shutil.rmtree(RUN_ROOT)
+    RUN_ROOT.mkdir(parents=True, exist_ok=True)
 
 
 def enforce_dataset_dtype(data, dtype):
@@ -116,34 +115,41 @@ def enforce_dataset_dtype(data, dtype):
             if current is not None:
                 setattr(data, attr, convert(current))
 
+
 def build_reference_function(coords, values, dtype=dde.config.real(np)):
-	if values.shape[1] == 1:
-		interpolator = LinearNDInterpolator(coords, values.ravel())
+    if values.shape[1] == 1:
+        interpolator = LinearNDInterpolator(coords, values.ravel())
 
-		def reference_fn(points: np.ndarray):
-			vals = interpolator(points)
-			if vals is None:
-				vals = np.zeros(len(points), dtype=dtype)
-			vals = np.nan_to_num(vals, nan=0.0)
-			return vals.reshape(-1, 1).astype(dtype, copy=False)
+        def reference_fn(points: np.ndarray):
+            vals = interpolator(points)
+            if vals is None:
+                vals = np.zeros(len(points), dtype=dtype)
+            vals = np.nan_to_num(vals, nan=0.0)
+            return vals.reshape(-1, 1).astype(dtype, copy=False)
 
-	else:
-		interpolators = [LinearNDInterpolator(coords, values[:, idx]) for idx in range(values.shape[1])]
+    else:
+        interpolators = [
+            LinearNDInterpolator(coords, values[:, idx])
+            for idx in range(values.shape[1])
+        ]
 
-		def reference_fn(points: np.ndarray):
-			comps = []
-			for interp in interpolators:
-				vals = interp(points)
-				if vals is None:
-					vals = np.zeros(len(points), dtype=dtype)
-				vals = np.nan_to_num(vals, nan=0.0)
-				comps.append(vals.reshape(-1, 1))
-			stacked = np.hstack(comps)
-			return stacked.astype(dtype, copy=False)
+        def reference_fn(points: np.ndarray):
+            comps = []
+            for interp in interpolators:
+                vals = interp(points)
+                if vals is None:
+                    vals = np.zeros(len(points), dtype=dtype)
+                vals = np.nan_to_num(vals, nan=0.0)
+                comps.append(vals.reshape(-1, 1))
+            stacked = np.hstack(comps)
+            return stacked.astype(dtype, copy=False)
 
-	return reference_fn
+    return reference_fn
 
-def weighted_polyfit_nd(X: np.ndarray, y: np.ndarray, deg: int, w: np.ndarray | None = None):
+
+def weighted_polyfit_nd(
+    X: np.ndarray, y: np.ndarray, deg: int, w: np.ndarray | None = None
+):
     """
     Weighted polynomial regression for d-dimensional inputs.
     Fits y ≈ A(X) @ coef where A is monomial basis (total degree <= deg).
@@ -179,7 +185,6 @@ def weighted_polyfit_nd(X: np.ndarray, y: np.ndarray, deg: int, w: np.ndarray | 
     elif y.ndim == 2:
         if y.shape[0] != N:
             raise ValueError(f"y first dim must match N={N}, got {y.shape[0]}")
-        # Keep target values as (N, C). / 保持目标值形状为(N, C)。
     else:
         raise ValueError(f"y must be 1D or 2D, got shape {y.shape}")
 
@@ -195,7 +200,6 @@ def weighted_polyfit_nd(X: np.ndarray, y: np.ndarray, deg: int, w: np.ndarray | 
     if deg < 0:
         raise ValueError("deg must be >= 0")
 
-    # Build monomial exponents with total degree <= deg. / 构造总次数不超过deg的单项式指数。
     if d == 1:
         powers = np.arange(deg + 1).reshape(-1, 1)
     elif d == 2:
@@ -205,7 +209,7 @@ def weighted_polyfit_nd(X: np.ndarray, y: np.ndarray, deg: int, w: np.ndarray | 
                 pows.append((i, j))
         powers = np.array(pows, dtype=int)
     else:
-        # Generic recursion for d > 2; term count grows quickly. / d>2时使用通用递归，项数会快速增长。
+
         def gen_powers(total_deg, dim):
             if dim == 1:
                 return [(total_deg,)]
@@ -220,19 +224,18 @@ def weighted_polyfit_nd(X: np.ndarray, y: np.ndarray, deg: int, w: np.ndarray | 
             pows.extend(gen_powers(tdeg, d))
         powers = np.array(pows, dtype=int)
 
-    # Build design matrix A from monomial powers. / 根据单项式指数构建设计矩阵A。
     M = powers.shape[0]
     A = np.ones((N, M), dtype=float)
     for k in range(d):
         A *= X[:, [k]] ** powers[:, k]
 
-    # Solve weighted least squares min ||sqrt(W)(A C - Y)||_F. / 求解加权最小二乘。
-    Wsqrt = np.sqrt(w)                      # (N,)
-    Aw = A * Wsqrt[:, None]                 # (N,M)
-    Yw = y * Wsqrt[:, None]                 # (N,C)
+    Wsqrt = np.sqrt(w)  # (N,)
+    Aw = A * Wsqrt[:, None]  # (N,M)
+    Yw = y * Wsqrt[:, None]  # (N,C)
 
     coef, *_ = np.linalg.lstsq(Aw, Yw, rcond=None)  # coef: (M,C)
     return coef, powers
+
 
 def polyval_nd(X: np.ndarray, coef: np.ndarray, powers: np.ndarray):
     """
@@ -266,11 +269,9 @@ def polyval_nd(X: np.ndarray, coef: np.ndarray, powers: np.ndarray):
 
     coef = np.asarray(coef, dtype=float)
     if coef.ndim == 1:
-        # Single-output polynomial values. / 单输出多项式值。
-        coef2 = coef.reshape(-1, 1)   # (M,1)
+        coef2 = coef.reshape(-1, 1)  # (M,1)
         squeeze_1d = True
     elif coef.ndim == 2:
-        # Multi-output polynomial values. / 多输出多项式值。
         coef2 = coef
         squeeze_1d = False
     else:
@@ -280,7 +281,6 @@ def polyval_nd(X: np.ndarray, coef: np.ndarray, powers: np.ndarray):
     if coef2.shape[0] != M:
         raise ValueError(f"coef first dim must match M={M}, got {coef2.shape[0]}")
 
-    # Design matrix shape is (N, M). / 设计矩阵形状为(N, M)。
     A = np.ones((N, M), dtype=float)
     for k in range(d):
         A *= X[:, [k]] ** powers[:, k]
@@ -291,14 +291,15 @@ def polyval_nd(X: np.ndarray, coef: np.ndarray, powers: np.ndarray):
         return Yhat.reshape(-1)  # (N,)
     return Yhat
 
+
 def visualize_polyfit_nd(
-    X,              # (N, d)
-    y,              # (N,) or (N,1) or (N,C)
-    coef,           # Single-output polynomial values. / 单输出多项式值。 or (M,1) or (M,C)
-    powers,         # (M, d)
-    out_path,       # Path or str
+    X,  # (N, d)
+    y,  # (N,) or (N,1) or (N,C)
+    coef,  # (M,) or (M,1) or (M,C)
+    powers,  # (M, d)
+    out_path,  # Path or str
     title="Low-frequency fit on anchors",
-    grid_res=50     # for 2D visualization
+    grid_res=50,  # for 2D visualization
 ):
     """
     Visualize polynomial fit for 1D or 2D.
@@ -327,11 +328,10 @@ def visualize_polyfit_nd(
     elif y.ndim == 2:
         if y.shape[0] != N:
             raise ValueError(f"y first dim must match N={N}, got {y.shape[0]}")
-        Y = y               # (N,C)
+        Y = y  # (N,C)
     else:
         raise ValueError(f"y must be 1D or 2D, got {y.shape}")
 
-    # Evaluate polynomial fit on the anchor points. / 在锚点上评估多项式拟合。
     Ylow = polyval_nd(X, coef, powers)
     if np.ndim(Ylow) == 1:
         Ylow = Ylow.reshape(N, 1)
@@ -343,21 +343,23 @@ def visualize_polyfit_nd(
 
     C = Y.shape[1]
     if Ylow.shape[1] != C:
-        raise ValueError(f"Channel mismatch: y has C={C}, but polyfit gives {Ylow.shape[1]}")
+        raise ValueError(
+            f"Channel mismatch: y has C={C}, but polyfit gives {Ylow.shape[1]}"
+        )
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Use one row for few channels, otherwise a grid layout. / 通道较少时单行展示，否则使用网格布局。
     ncols = min(3, C)
     nrows = int(np.ceil(C / ncols))
 
-    # 1D visualization branch. / 一维可视化分支。
     if d == 1:
         x = X[:, 0]
         order = np.argsort(x)
 
-        fig, axes = plt.subplots(nrows, ncols, figsize=(6*ncols, 4*nrows), squeeze=False)
+        fig, axes = plt.subplots(
+            nrows, ncols, figsize=(6 * ncols, 4 * nrows), squeeze=False
+        )
         for c in range(C):
             ax = axes[c // ncols][c % ncols]
             ax.plot(x[order], Ylow[order, c], linewidth=2, label="polyfit")
@@ -367,19 +369,16 @@ def visualize_polyfit_nd(
             ax.set_title(f"{title} (ch={c})")
             ax.legend()
 
-        # Hide unused subplot axes. / 隐藏未使用的子图坐标轴。
-        for k in range(C, nrows*ncols):
+        for k in range(C, nrows * ncols):
             axes[k // ncols][k % ncols].axis("off")
 
         plt.savefig(out_path)
         plt.close(fig)
 
-    # 2D visualization branch. / 二维可视化分支。
     elif d == 2:
         x = X[:, 0]
         y_coord = X[:, 1]
 
-        # Build an interpolation grid for contour plots. / 为等值图构建插值网格。
         xg = np.linspace(x.min(), x.max(), grid_res)
         yg = np.linspace(y_coord.min(), y_coord.max(), grid_res)
         Xg, Yg = np.meshgrid(xg, yg)
@@ -392,7 +391,9 @@ def visualize_polyfit_nd(
         if Zg_all.shape[1] != C:
             raise ValueError(f"Grid poly channel mismatch: {Zg_all.shape[1]} vs C={C}")
 
-        fig, axes = plt.subplots(nrows, ncols, figsize=(6*ncols, 5*nrows), squeeze=False)
+        fig, axes = plt.subplots(
+            nrows, ncols, figsize=(6 * ncols, 5 * nrows), squeeze=False
+        )
         for c in range(C):
             ax = axes[c // ncols][c % ncols]
 
@@ -401,12 +402,13 @@ def visualize_polyfit_nd(
             fig.colorbar(contour, ax=ax, shrink=0.85)
 
             sc = ax.scatter(
-                x, y_coord,
+                x,
+                y_coord,
                 c=Y[:, c],
                 cmap="viridis",
                 edgecolor="k",
                 s=25,
-                label="anchors"
+                label="anchors",
             )
 
             ax.set_xlabel("x")
@@ -414,8 +416,7 @@ def visualize_polyfit_nd(
             ax.set_title(f"{title} (ch={c})")
             ax.legend(loc="upper right")
 
-        # Hide unused subplot axes. / 隐藏未使用的子图坐标轴。
-        for k in range(C, nrows*ncols):
+        for k in range(C, nrows * ncols):
             axes[k // ncols][k % ncols].axis("off")
 
         plt.savefig(out_path)
@@ -424,8 +425,10 @@ def visualize_polyfit_nd(
     else:
         raise ValueError(f"Visualization only supports d=1 or d=2, got d={d}")
 
-# Summarize final metrics by experiment group; report mean and variance. / 按实验组汇总最终指标，并报告均值和方差。
-def summarize_batch(dir: Union[str, Path], output_filename: str = "final_metrics_summary.txt") -> Path:
+
+def summarize_batch(
+    dir: Union[str, Path], output_filename: str = "final_metrics_summary.txt"
+) -> Path:
     batch_dir = Path(dir)
     if not batch_dir.exists() or not batch_dir.is_dir():
         raise ValueError(f"Invalid batch directory: {batch_dir}")
@@ -435,10 +438,8 @@ def summarize_batch(dir: Union[str, Path], output_filename: str = "final_metrics
         raise ValueError(f"No metrics.json found under: {batch_dir}")
 
     def canonical_group_key(path: Path) -> str:
-        # Group by experiment path pattern, independent of each run's max_step. / 按实验路径模式分组，不受各run的max_step影响。
         rel = path.relative_to(batch_dir).as_posix()
         rel = re.sub(r"^run_\d+_seed_\d+/", "", rel)
-        # Normalize both seed naming styles: `random_seed_x` and `seed_x`. / 统一random_seed_x和seed_x两种命名。
         rel = re.sub(r"random_seed_\d+|seed_\d+", "seed_*", rel)
         return rel
 
@@ -472,7 +473,9 @@ def summarize_batch(dir: Union[str, Path], output_filename: str = "final_metrics
     lines.append(
         "Aggregation rule: for each run, use metrics at the maximum training step in metrics.json."
     )
-    lines.append("Grouping rule: runs are grouped by experiment path; different max_step values stay in the same group.")
+    lines.append(
+        "Grouping rule: runs are grouped by experiment path; different max_step values stay in the same group."
+    )
     lines.append("Variance definition: population variance (ddof=0).")
     lines.append("")
 

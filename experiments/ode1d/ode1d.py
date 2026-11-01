@@ -1,5 +1,3 @@
-"""One-dimensional ODE benchmark for curriculum PINN experiments. / 一维ODE课程学习PINN基准实验。"""
-
 from dataclasses import dataclass, field
 from datetime import datetime
 import json
@@ -10,6 +8,7 @@ import torch
 import deepxde as dde
 import deepxde.config as ddeconfig
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -19,88 +18,83 @@ import pinn_pro
 
 BASE_DIR = Path(__file__).resolve().parent
 
+
 @dataclass
 class OdeConfig_l:
-    # PDE parameters. / PDE参数。
     K_VALUE = 10 * np.pi
     ALPHA_VALUE = 2.0
 
-    # Geometry settings. / 几何区域设置。
     domain: Tuple[float, float] = (0.0, 1.0)
 
-    # Sampling point counts. / 采样点数量。
     num_domain: int = 1000
     num_boundary: int = 2
     num_test: int = 1000
 
-    # Training configuration. / 训练配置。
     net_width: int = 100
     net_depth: int = 6
     learning_rate: float = 1e-3
-    opt_decay = ['step', 2000, 0.9]
+    opt_decay = ["step", 2000, 0.9]
     adam_iterations: int = 10000
     lbfgs_iterations: int = 0
     train_distribution: str = "uniform"
     loss_weight_bc = 100
     loss_weights: Tuple[float, float, float] = (1, loss_weight_bc, loss_weight_bc)
     loss_headers = ["PDE Loss", "BC Loss left", "BC Loss right"]
-    # Random seed. / 随机种子。
     seed: int = 0
-    # Use a fresh mutable default for each config instance. / 每个配置实例使用独立的可变默认值。
-    reweight_config: dict = field(default_factory=lambda: {
-        "decay_epsi": 1.0,
-        "num_subdomains": 5,
-        "reweight_every": 1000,
-        "reweight_causal_begin": 1000,
-        "reweight_causal_end": 5000,
-        "reweight_adaptive_begin": 100000,
-        "reweight_adaptive_end": 100000,
-        "record_every": 1000,
-        "low_fre_n": 2,
-        "low_fre_data_weight": 0.0,
-        "frame_data_weight": 0.0,
-    })
+    reweight_config: dict = field(
+        default_factory=lambda: {
+            "decay_epsi": 1.0,
+            "num_subdomains": 5,
+            "reweight_every": 1000,
+            "reweight_causal_begin": 1000,
+            "reweight_causal_end": 5000,
+            "reweight_adaptive_begin": 100000,
+            "reweight_adaptive_end": 100000,
+            "record_every": 1000,
+            "low_fre_n": 2,
+            "low_fre_data_weight": 0.0,
+            "frame_data_weight": 0.0,
+        }
+    )
+
 
 @dataclass
 class OdeConfig_h:
-    # PDE parameters. / PDE参数。
     K_VALUE = 20 * np.pi
     ALPHA_VALUE = 3.0
 
-    # Geometry settings. / 几何区域设置。
     domain: Tuple[float, float] = (0.0, 1.0)
 
-    # Sampling point counts. / 采样点数量。
     num_domain: int = 1000
     num_boundary: int = 2
     num_test: int = 1000
 
-    # Training configuration. / 训练配置。
     net_width: int = 100
     net_depth: int = 6
     learning_rate: float = 1e-3
-    opt_decay = ['step', 2000, 0.9]
+    opt_decay = ["step", 2000, 0.9]
     adam_iterations: int = 10000
     lbfgs_iterations: int = 6000
     train_distribution: str = "uniform"
     loss_weight_bc = 1000
     loss_weights: Tuple[float, float, float] = (1, loss_weight_bc, loss_weight_bc)
     loss_headers = ["PDE Loss", "BC Loss left", "BC Loss right"]
-    # Random seed. / 随机种子。
     seed: int = 0
-    # Use a fresh mutable default for each config instance. / 每个配置实例使用独立的可变默认值。
-    reweight_config: dict = field(default_factory=lambda: {
-        "decay_epsi": 1.0,
-        "num_subdomains": 5,
-        "reweight_every": 1000,
-        "reweight_causal_begin": 1000,
-        "reweight_causal_end": 8000,
-        "reweight_adaptive_begin": 100000,
-        "reweight_adaptive_end": 100000,
-        "low_fre_n": 2,
-        "low_fre_data_weight": 10.0,
-        "frame_data_weight": 0.0,
-    })
+    reweight_config: dict = field(
+        default_factory=lambda: {
+            "decay_epsi": 1.0,
+            "num_subdomains": 5,
+            "reweight_every": 1000,
+            "reweight_causal_begin": 1000,
+            "reweight_causal_end": 8000,
+            "reweight_adaptive_begin": 100000,
+            "reweight_adaptive_end": 100000,
+            "low_fre_n": 2,
+            "low_fre_data_weight": 10.0,
+            "frame_data_weight": 0.0,
+        }
+    )
+
 
 class Ode1D:
     def __init__(self, config: OdeConfig_l):
@@ -128,8 +122,32 @@ class Ode1D:
     def build_reference_fn(self):
         ALPHA_VALUE = self.config.ALPHA_VALUE
         K_VALUE = self.config.K_VALUE
+
         def exact_solution(x):
-            return x * (1.0 - x) * np.exp(ALPHA_VALUE * x) * np.sin(K_VALUE * x)
+            x = np.asarray(x, dtype=np.float64)
+            z = complex(ALPHA_VALUE, K_VALUE)
+
+            def H(t):
+                return (
+                    2.0
+                    * K_VALUE
+                    * np.real(
+                        np.exp(z * t)
+                        * (
+                            t * (1.0 - t) / z**2
+                            - 2.0 * (1.0 - 2.0 * t) / z**3
+                            - 6.0 / z**4
+                        )
+                    )
+                )
+
+            return (
+                x * (1.0 - x) * np.exp(ALPHA_VALUE * x) * np.sin(K_VALUE * x)
+                + H(x)
+                - (1.0 - x) * H(0.0)
+                - x * H(1.0)
+            )
+
         return exact_solution
 
     def build_pde(self):
@@ -182,7 +200,9 @@ class Ode1D:
         enforce_dataset_dtype(data, ddeconfig.real(np))
         return data
 
-    def make_dataset_pinn_weighted_samples(self, geom, reference_fn, config: OdeConfig_l):
+    def make_dataset_pinn_weighted_samples(
+        self, geom, reference_fn, config: OdeConfig_l
+    ):
         bc1 = dde.icbc.DirichletBC(geom, lambda x: 0, self.boundary_l)
         bc2 = dde.icbc.DirichletBC(geom, lambda x: 0, self.boundary_r)
 
@@ -217,8 +237,9 @@ class Ode1D:
         layers = [1] + [config.net_width] * config.net_depth + [1]
         return dde.nn.FNN(layers, "tanh", "Glorot uniform")
 
-
-    def component_metrics(self, y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
+    def component_metrics(
+        self, y_true: np.ndarray, y_pred: np.ndarray
+    ) -> Dict[str, float]:
         result: Dict[str, float] = {}
         result["u_mse"] = float(dde.metrics.mean_squared_error(y_true, y_pred))
         result["u_l2_relative"] = float(dde.metrics.l2_relative_error(y_true, y_pred))
@@ -226,7 +247,6 @@ class Ode1D:
         return result
 
     def plot_fields(self, x, y_true, y_pred, save_path: Path, loss_record: str = ""):
-
         fig, axes = plt.subplots(1, 2, figsize=(12, 4))
 
         axes[0].plot(x, y_true, label="Exact", linewidth=2.0)
@@ -246,8 +266,9 @@ class Ode1D:
         fig.savefig(save_path)
         plt.close(fig)
 
-    def plot_pde_loss_grad(self, loss_weight_list, loss_list, grad_list, save_path: Path):
-        # Plot per-subdomain PDE loss and gradient strength histograms. / 绘制每个子域的PDE损失和梯度强度直方图。
+    def plot_pde_loss_grad(
+        self, loss_weight_list, loss_list, grad_list, save_path: Path
+    ):
         save_path.parent.mkdir(parents=True, exist_ok=True)
         weight_arr = np.asarray(loss_weight_list, dtype=float)
         loss_arr = np.asarray(loss_list, dtype=float)
@@ -271,35 +292,3 @@ class Ode1D:
 
         fig.savefig(save_path)
         plt.close(fig)
-
-if __name__ == "__main__":
-    device = torch.device("cuda:0")
-    print(f"Using device: {device}")
-    torch.cuda.set_device(device)
-
-    frequency = "high"
-    num_runs = 3
-    base_seed = 0
-    seeds = [base_seed + i for i in range(num_runs)]
-
-    batch_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_root = BASE_DIR / f"multi_runs_{frequency}_frequency" / f"batch_{batch_tag}"
-    run_root.mkdir(parents=True, exist_ok=True)
-
-    for run_idx, seed in enumerate(seeds):
-        if frequency == "low":
-            config = OdeConfig_l()
-        else:
-            config = OdeConfig_h()
-        if seed is None:
-            continue
-
-        config.seed = int(seed)
-        ODE_model = Ode1D(config)
-        run_base_dir = run_root / f"run_{run_idx:02d}_seed_{config.seed}"
-        run_base_dir.mkdir(parents=True, exist_ok=True)
-
-        pinn_space_weight = pinn_pro.PINNWeightedSamples(ODE_model, run_base_dir)
-        pinn_space_weight.train_and_evaluate()
-
-    summarize_batch(run_root)
